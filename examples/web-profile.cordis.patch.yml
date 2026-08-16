@@ -1,0 +1,21 @@
+# 生产实测配置 — 把 dsh-codex-sync 装进 web profile 的完整示例
+#
+# 这是本仓库在真实环境验证过的挂载方式:
+#   1. package.json:  "dsh-codex-sync": "github:Walvez/dsh-codex-sync"  (加入 dependencies)
+#   2. dsh.profile.bundles 里不需要列它 —— 以 insert 行方式挂载(和官方 web-search-exa 一致)
+#   3. 本文件内容复制进 profile 的 cordis.patch.yml 的 insert 列表
+#   4. 重启 dsh web
+#
+# 实测结果(2026-08):
+#   - codex 的 6 个技能全部成为一等公民 DSH 技能, 出现在技能目录
+#   - MCP 自动镜像: mcp__cloudflare-api__docs/search/execute ✓
+#     mcp__exa__web_search_exa / web_search_advanced_exa / web_fetch_exa / agent_run ✓
+#   - node_repl 被排除(ChatGPT.app 私有协议), dsh-plugins 恒排除(防递归)
+#   - 斜杠命令 /import-codex /import-all /attach-workspaces 可用
+- insert:
+    - id: codex-sync
+      name: dsh-codex-sync
+      config:
+        maxSkills: 30
+        mcpMirrorDeny:
+          - node_repl

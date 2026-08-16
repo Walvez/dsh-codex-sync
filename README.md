@@ -66,6 +66,7 @@ dsh plugin --profile web add dsh-codex-sync
 ```
 
 bundle 自带 `cordis.patch.yml`，自动插入插件行（config 为空 = 全部默认）。
+**生产实测配置**（含 MCP 镜像排除项）见 [`examples/web-profile.cordis.patch.yml`](examples/web-profile.cordis.patch.yml)。
 
 ### Codex 侧
 ```bash
