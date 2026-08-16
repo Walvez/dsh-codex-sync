@@ -55,7 +55,8 @@ lib/convert.mjs          codex events → dsh events           (MIT, adapted)
 lib/dsh-writer.mjs       persistence append                  (MIT, adapted)
 lib/attach-workspaces.mjs  session → workspace attach        (MIT, adapted)
 lib/mcp.js               explicit MCP mounting + codex config auto-mirror
-lib/client.js            CLIENT bundle: composer Sync button (MIT, adapted)
+lib/state.js             persisted toggle state (~/.dsh/codex-sync.json)
+lib/client.js            CLIENT bundle: composer Sync settings dropdown (MIT, adapted)
 examples/web-profile.cordis.patch.yml   production-verified mount example
 ```
 
@@ -73,10 +74,17 @@ examples/web-profile.cordis.patch.yml   production-verified mount example
    `codex-sync:instructions` + `codex-sync:config`. Text providers must be
    **synchronous** (the section API calls them during prompt assembly) —
    read files synchronously with `readFileSync`.
-3. **Commands** — `ctx.commands.register({ name, description, handler })`:
-   `/import-codex`, `/import-all`, `/attach-workspaces`. `parseInput` handles
-   `--key value` and `--key=value`.
-4. **MCP** — see §5.
+ 3. **Commands** — `ctx.commands.register({ name, description, handler })`:
+    `/import-codex`, `/import-all`, `/attach-workspaces`, `/mcp-status`,
+    `/auto-import`. `parseInput` handles `--key value` and `--key=value`.
+    `/mcp-status` reads the mirror handle's `getStatus()` (per-server reason:
+    mounted/denied/disabled/silent/failed…). `/auto-import` persists to
+    `lib/state.js` (`~/.dsh/codex-sync.json`); `effectiveAutoImport` lets the
+    persisted toggle override the `autoImport` config default.
+ 4. **autoImport** — when effective, hooks `agent/session-start`
+    (`source === 'startup'`, runs once): services are guaranteed ready and
+    the import does not delay boot.
+ 5. **MCP** — see §5.
 
 ## 4. Session import
 
@@ -115,9 +123,13 @@ Two sources (lib/mcp.js):
 
 Registers into the composer tool row slot `conversation.input.left`
 (via `ctx.slots.inject(name, () => ctx.slots.register({…}, Component))`).
-`inject: ['slots', 'remote', 'remote.commands']`. The sync action runs
-`ctx.remote.commands.execute(sessionId, '/import-all')` and shows the result
-inline. Adapted from dsh-import-agents' SyncButton (MIT — see NOTICE).
+`inject: ['slots', 'remote', 'remote.commands']`. Renders a **Sync settings
+dropdown** (`同步设置 ▾/▴`): the chevron toggles a menu with 立即导入
+(`/import-all`), 自动导入 badge toggle (`/auto-import on|off`, state refreshed
+on open) and 查看镜像状态 (`/mcp-status`); results show inline, auto-hidden.
+Pure-presentation component; every action goes through one injected
+`runCommand(line)` wrapper. Adapted from dsh-import-agents' SyncButton (MIT —
+see NOTICE).
 
 ## 7. CLI (bin/dsh-codex-sync.js)
 

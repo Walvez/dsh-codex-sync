@@ -29,16 +29,20 @@
 - `~/.codex/config.toml` 的 model/model_provider → 摘要注入
 - **每次组提示词实时读文件**：改完下一条对话即生效，无需重启
 
-### 3. 历史会话导入（半自动，幂等）
+### 3. 历史会话导入（半自动/全自动，幂等）
 ```
 /import-codex [--limit N] [--project 子串] [--since ISO|ms]   # 增量导入
 /import-all                                                  # 同 /import-codex（当前仅 codex 源）
 /attach-workspaces                                           # 全量补挂工作区
+/mcp-status                                                  # 镜像状态（每服务器一行+原因）
+/auto-import [on|off]                                        # 自动导入开关（持久化，无参=查询）
 ```
 - 会话写入 `ctx.sessionPersistence`，GUI 立即可见、可继续对话
 - 幂等：已导入的 id 自动跳过，重复执行只补新增
 - **自动挂 workspace**：按 cwd 建/挂工作区，一次导入全量归位，不漏
 - **679MB 崩溃修复**：单文件 > `maxSessionBytes`（默认 256MiB）直接跳过并提示，避免 Node 字符串上限崩溃中断整个导入（实战中 679MB 的 Surge 会话踩过）
+- **autoImport**（默认关；`/auto-import` 开关持久化到 `~/.dsh/codex-sync.json`，覆盖配置默认值）：开启后第一个 startup 会话时自动增量导入
+- **composer 同步设置菜单**：`同步设置 ▾` 下拉 = 立即导入 / 自动导入开·关 / 查看镜像状态
 
 ### 4. 双向 MCP
 **方向 B（自动镜像，核心亮点）**：以 `~/.codex/config.toml` 的 `[mcp_servers.*]` 为唯一事实源，
@@ -90,6 +94,7 @@ dsh-codex-sync doctor                   # 体检: 技能/会话/cloudflare 握�
 | `mcpMirrorDeny` | `[]` | 额外不镜像的服务器名（`dsh-plugins` 恒排除） |
 | `mcpMirrorOnly` | 未设置 | 设置后只镜像这些名字 |
 | `mcpMirrorSilent` | `[]` | 静音名单：这些 stdio 服务器以 `sh -c '… 2>/dev/null'` 启动，屏蔽子进程 stderr 噪音（如 exa 的 mcp-remote 流量日志）；协议走 stdin/stdout，安全 |
+| `autoImport` | `false` | 启动自动增量导入（第一个 startup 会话时）；`/auto-import` 开关持久化后覆盖此默认值 |
 
 ## 自动 vs 手动
 
@@ -97,7 +102,7 @@ dsh-codex-sync doctor                   # 体检: 技能/会话/cloudflare 握�
 |---|---|---|
 | 技能 → DSH | 自动 | 插件启动扫描；重启后新技能出现 |
 | 指令/配置 → DSH | 自动·实时 | 改文件即生效，无需重启 |
-| 会话 → DSH | 半自动·幂等 | 首次 `/import-codex`，之后增量 |
+| 会话 → DSH | 半自动·幂等（可全自动） | `/import-codex` 增量；`autoImport` 开启后启动自动导入 |
 | workspace 归属 | 自动 | 导入后全量补挂 |
 | MCP 镜像（方向 B） | 自动·实时 | 启动挂载 + 监听 config.toml 增删改 |
 | 反向桥（方向 A） | 一次性安装 | `codex-install` + 重启 Codex |
