@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 dist/
 .tmp/
+
+# private local ops notes — never publish (personal paths inside)
+docs/DEPLOYMENT.local.md
