@@ -38,7 +38,7 @@
     "NOTICE"
   ],
   "bin": {
-    "dsh-codex-sync": "./bin/dsh-codex-sync.js"
+    "dsh-codex-sync": "bin/dsh-codex-sync.js"
   },
   "dsh": {
     "bundle": {
