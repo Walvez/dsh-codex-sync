@@ -1,16 +1,17 @@
-# dsh-codex-sync — LOCAL deployment memory (do NOT commit — private)
+# dsh-codex-sync — LOCAL deployment memory (private)
 
-Personal ops notes for this machine. This file is gitignored; the public
-repo must never contain these paths.
+Personal ops notes for this machine. Tracked in git for the single user's
+convenience, but machine paths here are NOT for the public README/docs.
 
-Last updated: 2026-08-16 (v0.3.0 released)
+Last updated: 2026-08-16 (v0.6.1 released)
 
 ## Local deployment state (this Mac)
 
 - Profile: `~/.dsh/profiles/web`
 - Installed from: `github:Walvez/dsh-codex-sync` (pnpm dep in web profile
-  package.json) — currently **0.3.0**
-- Mounted via `cordis.patch.yml` insert row:
+  package.json) — currently **0.6.1**
+- Mounted via `cordis.patch.yml` insert row (NOT in dsh.profile.bundles —
+  market updates re-add it there → duplicate loader entry id; fixed 2026-08):
   ```yaml
   - id: codex-sync
     name: dsh-codex-sync
@@ -18,6 +19,8 @@ Last updated: 2026-08-16 (v0.3.0 released)
       maxSkills: 30
       mcpMirrorDeny:
         - node_repl
+      mcpMirrorSilent:
+        - exa
   ```
 - Replaced rows (removed): `codex-bridge` (local plugin), `mcp-cloudflare`
   (explicit MCP), `import-pi-opencode` (dsh-import-agents). The cloudflare
@@ -48,14 +51,16 @@ Last updated: 2026-08-16 (v0.3.0 released)
 - **679 MB lesson**: one >512 MiB JSONL session crashes `readFileSync`
   (string-limit) and aborts the whole import — hence the 256 MiB
   `maxSessionBytes` guard.
-- Imported sessions: 183 codex files (179+ attached to 16 workspaces),
-  idempotent incremental via `/import-codex` or the Sync button.
+- Imported sessions: 182 codex rollouts imported (16 workspaces attached),
+  idempotent incremental via `/import-codex` or the Sync button. 21 of them
+  contained `<recommended_plugins>` blocks from before the 0.6.1 stripping —
+  delete + re-import to clean.
 
 ## Distribution status
 
 - GitHub: https://github.com/Walvez/dsh-codex-sync (public, `dsh-plugin`
   topic, MIT + NOTICE crediting YYTbit / Chang-Tong / bobleer)
-- npm: `dsh-codex-sync` — 0.1.0, 0.2.0, 0.3.0 published (web-auth 2FA: publish must
+- npm: `dsh-codex-sync` — 0.1.0 … 0.6.1 published (web-auth 2FA: publish must
   run in an interactive terminal, or `script -q /dev/null npm publish` from
   a non-interactive shell)
 - Market registry: **PR #909 MERGED** → live at
@@ -65,9 +70,8 @@ Last updated: 2026-08-16 (v0.3.0 released)
 
 ## Roadmap / open items
 
-- [ ] `autoImport: true` (startup incremental import — already designed,
-      not implemented; user was asked, never answered)
-- [ ] `/mcp-status` command (view mirror state in-app)
+- [x] `autoImport` startup import (v0.4.0) — toggle in Sync menu, persists
+- [x] `/mcp-status` (v0.4.0) — per-server reason + autoImport truth line
 - [ ] Screenshots for the market detail page (assets/ in repo → PR to
       awesome-dsh-plugin `data/screenshots.json`, GitHub-hosted URLs only)
 - [ ] Multi-source import (opencode / pi / claude-code readers — reuse

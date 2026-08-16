@@ -6,12 +6,19 @@ runtime contracts, and the hard-won loader rules this project discovered.
 ## 1. What "a dsh plugin" actually is
 
 A dsh plugin ships as an **npm package** that a profile mounts in one of two
-ways. dsh-codex-sync is the **bundle** flavor:
+ways. dsh-codex-sync supports both; the production profile uses the **plain
+row** flavor (the bundle patch still ships for market installs):
 
 | Mechanism | How | Used by |
 |---|---|---|
-| **Bundle** | package.json declares `dsh.bundle.patch` → the loader applies that YAML as a **patch layer** (the row below) | dsh-codex-sync, dshmarket |
-| **Plain row** | profile `cordis.patch.yml` inserts `name: <package>` and the loader resolves the package's `main` as a Cordis plugin | web-search-exa |
+| **Bundle** | package.json declares `dsh.bundle.patch` → the loader applies that YAML as a **patch layer** (the row below) | dshmarket; dsh-codex-sync via `dsh plugin add` |
+| **Plain row** | profile `cordis.patch.yml` inserts `name: <package>` and the loader resolves the package's `main` as a Cordis plugin | dsh-codex-sync (production profile), web-search-exa |
+
+> **Never both.** 2026-08 incident: the plugin market updated
+> `dsh.profile.bundles` to include dsh-codex-sync while the profile's
+> `cordis.patch.yml` already carried an `insert` row for the same id — the
+> loader died at startup with `duplicate loader entry id: codex-sync`. The
+> two mount paths are alternatives, not layers.
 
 ```jsonc
 // package.json — what makes it a bundle
@@ -101,6 +108,13 @@ examples/web-profile.cordis.patch.yml   production-verified mount example
 - After import, `attachAllImported` re-attaches **all** imported sessions to
   workspaces by cwd (must run inside the server process — `workspace.json` is
   owned by the running server; external writes clobber it).
+- **Control-block stripping** (0.6.1): codex desktop injects system blocks
+  into the rollout — `<recommended_plugins>` (plugin catalog), the
+  `# AGENTS.md instructions` + `<INSTRUCTIONS>` wrapper, `<environment_context>`
+  and friends. `codex-reader.mjs` drops blocks whose text starts with a known
+  control opener (`SYSTEM_BLOCK` + `AGENTS_MD_BLOCK`); a user message that
+  strips to zero blocks opens **no turn** in `buildDshEvents` and never seeds
+  `deriveImportTitle` — the title comes from the first real user message.
 
 ## 5. MCP
 
@@ -129,11 +143,16 @@ Registers into the composer tool row slot `conversation.input.left`
 (via `ctx.slots.inject(name, () => ctx.slots.register({…}, Component))`).
 `inject: ['slots', 'remote', 'remote.commands']`. Renders a **Sync settings
 dropdown** (`同步设置 ▾/▴`): the chevron toggles a menu with 立即导入
-(`/import-all`), 自动导入 badge toggle (`/auto-import on|off`, state refreshed
-on open) and 查看镜像状态 (`/mcp-status`); results show inline, auto-hidden.
-Pure-presentation component; every action goes through one injected
-`runCommand(line)` wrapper. Adapted from dsh-import-agents' SyncButton (MIT —
-see NOTICE).
+(`/import-all`), 自动导入 badge toggle (`/auto-import on|off`) and
+查看镜像状态 (`/mcp-status`). **Opening the menu runs no command and adds no
+conversation card** — the badge mirrors the last toggle in localStorage
+(initial: off, the config default); toggling executes the command and the
+result card in the conversation is the feedback. No inline results are
+rendered, so the composer row never shifts. The platform settings seam
+refuses third-party namespaces (dsh-host-apiproxy allowlist), which is why
+the badge cannot read a live host value. Pure-presentation component; every
+action goes through one injected `runCommand(line)` wrapper. Adapted from
+dsh-import-agents' SyncButton (MIT — see NOTICE).
 
 ## 7. CLI (bin/dsh-codex-sync.js)
 

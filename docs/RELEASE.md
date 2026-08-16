@@ -11,6 +11,9 @@ cd ~/Documents/dsh-codex-sync
 #   - package.json "version"
 #   - commit message convention: feat:/fix:/docs: + version
 
+# mandatory local tests (project rule: 先本地测试全绿)
+npm test                              # host + client + reader suites
+
 # sanity
 for f in lib/*.js lib/*.mjs bin/*.js lib/client.js; do node --check "$f"; done
 node bin/dsh-codex-sync.js doctor   # health check still green
@@ -53,11 +56,21 @@ script -q /dev/null npm publish
 
 ## 3. Verify after publish
 
+`npm view` caches stale versions on this machine — the authoritative check
+is the registry API directly:
+
 ```bash
-npm view dsh-codex-sync version          # newest
-npm view dsh-codex-sync versions         # full list
-npm view dsh-codex-sync dist.fileCount   # e.g. 17 — includes client.js
+curl -s https://registry.npmjs.org/dsh-codex-sync \
+  | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);console.log(j['dist-tags'].latest)})"
 ```
+
+## 3.5 Release flow (project rule, since v0.5.0)
+
+1. implement → `npm test` green locally
+2. install the packed tarball into the web profile (`pnpm add <tgz>`) and let
+   the user restart + verify in the live UI
+3. only after user acceptance: push GitHub → publish npm → restore the
+   profile dependency to `github:Walvez/dsh-codex-sync` + `pnpm update`
 
 ## 4. Market / registry (usually nothing to do)
 

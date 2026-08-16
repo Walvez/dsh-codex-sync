@@ -41,8 +41,9 @@
 - 幂等：已导入的 id 自动跳过，重复执行只补新增
 - **自动挂 workspace**：按 cwd 建/挂工作区，一次导入全量归位，不漏
 - **679MB 崩溃修复**：单文件 > `maxSessionBytes`（默认 256MiB）直接跳过并提示，避免 Node 字符串上限崩溃中断整个导入（实战中 679MB 的 Surge 会话踩过）
-- **autoImport**（默认关；菜单开关/`/auto-import` 持久化到设置命名空间，覆盖配置默认值）：开启后第一个 startup 会话时自动增量导入
+- **autoImport**（默认关；菜单开关/`/auto-import` 持久化到 `~/.dsh/codex-sync.json`，覆盖配置默认值）：开启后第一个 startup 会话时自动增量导入；`/mcp-status` 显示当前真值
 - **composer 同步设置菜单**：`同步设置 ▾` 下拉 = 立即导入 / 自动导入开·关 / 查看镜像状态；**打开菜单不产生对话卡片**（徽章镜像自本浏览器最近一次切换），导入/镜像/切换结果都以对话卡片展示
+- **控制块剥离**（0.6.1）：导入时 codex 注入的系统块（`<recommended_plugins>`、`<environment_context>`、AGENTS.md 指令包装等）自动剔除，对话开头和标题只保留真实内容
 
 ### 4. 双向 MCP
 **方向 B（自动镜像，核心亮点）**：以 `~/.codex/config.toml` 的 `[mcp_servers.*]` 为唯一事实源，
@@ -61,16 +62,36 @@ dsh-codex-sync codex-install   # 克隆+构建反向 MCP 服务器并写入 ~/.c
 ## 安装
 
 ### DSH 侧
+
+两种挂载方式**二选一，不能混用**（混用 = loader 启动即报 `duplicate loader entry id: codex-sync`）：
+
 ```bash
-# 方式一: bundle 方式(推荐, 一行装齐)
-dsh plugin --profile web add dsh-codex-sync
-# 方式二: 手动 —— 把 dsh-codex-sync 加进 profile 的 dsh.profile.bundles,
-#         然后 pnpm install（或软链到 node_modules）
-# 重启 dsh web
+# 方式一: insert 行挂载(本机生产实测, 推荐)
+#   1. package.json dependencies 加 "dsh-codex-sync": "github:Walvez/dsh-codex-sync"
+#      (或 npm install dsh-codex-sync)
+#   2. profile 的 cordis.patch.yml insert 列表加一行(见下方/示例文件)
+#   3. 重启 dsh web
+
+# 方式二: 市场/bundle 方式(一行装齐)
+dsh plugin --profile web add dsh-codex-sync   # 会写进 dsh.profile.bundles
+# 注意: 若 profile 里已有 insert 行, 市场更新再次 add 会同时出现两处 -> 报错,
+#       删掉 insert 行(或从 bundles 移除)二选一
 ```
 
-bundle 自带 `cordis.patch.yml`，自动插入插件行（config 为空 = 全部默认）。
-**生产实测配置**（含 MCP 镜像排除项）见 [`examples/web-profile.cordis.patch.yml`](examples/web-profile.cordis.patch.yml)。
+生产实测 insert 行（含 MCP 镜像排除项）：
+```yaml
+- insert:
+    - id: codex-sync
+      name: dsh-codex-sync
+      config:
+        maxSkills: 30
+        mcpMirrorDeny:
+          - node_repl
+        mcpMirrorSilent:
+          - exa
+```
+
+完整注释版见 [`examples/web-profile.cordis.patch.yml`](examples/web-profile.cordis.patch.yml)。
 
 ### Codex 侧
 ```bash
@@ -104,9 +125,8 @@ npm test
 
 - `test/host.smoke.mjs` — 宿主冒烟：命令注册、CommandInvocation 参数解析、/auto-import 持久化、镜像状态（含静音/排除/禁用原因）
 - `test/client.render.mjs` — client bundle 加载 + 真实 React SSR 渲染冒烟
-- 发布流程：**先本地 `npm test` 全绿 → 推送 GitHub → 再发布 npm**（避免线上反复更新）
-
-- 导入时会话内只保留真实对话：codex 注入的系统块（`<recommended_plugins>`、`<environment_context>`、AGENTS.md 指令等）自动剥离，标题取第一条真实用户消息（0.6.1）
+- `test/codex-reader.test.mjs` — codex rollout 解析：系统控制块剥离 + 标题取第一条真实用户消息
+- 发布流程：**先本地 `npm test` 全绿 → 用户实测验收 → 推送 GitHub → 再发布 npm**（避免线上反复更新）
 
 ## 自动 vs 手动
 
@@ -127,6 +147,7 @@ npm test
 4. **超大会话文件**：>512MB 单文件会让 `readFileSync` 抛字符串上限错误，导入前先 size 检查
 5. **Cloudflare MCP token**：`insufficient_scope` = token 缺 `Account → Account Settings → Read`（= `account:read`）；编辑 token 权限不换密钥，改完重启即生效
 6. **workspace.json 并发写**：由运行中的服务器进程持有，补挂操作必须在 GUI 内跑（`/attach-workspaces`），外部脚本会覆盖丢数据
+7. **duplicate loader entry id**（2026-08 实踩）：插件市场更新会把 dsh-codex-sync 写进 `dsh.profile.bundles`，而 profile 的 `cordis.patch.yml` 里已有 insert 行 → 两个 `id: codex-sync`，loader 启动即崩。修复：bundles 与 insert 行只留一处（本机选择 insert 行，市场 bundle 保留 dshmarket）
 
 ## 致谢与许可
 
@@ -137,7 +158,8 @@ MIT License。本项目整合并改造了以下 MIT 开源作品，均保留版�
 
 ## 路线图
 
-- [ ] `autoImport: true`（启动自动增量导入，会话同步也全自动）
-- [ ] opencode / claude 会话源（复用 dsh-import-agents 的 reader）
-- [ ] `/mcp-status` 命令查看镜像状态
-- [ ] npm 发布
+- [x] `autoImport` 启动自动增量导入（v0.4.0，菜单开关持久化）
+- [x] `/mcp-status` 命令查看镜像状态（v0.4.0，含每服务器原因 + autoImport 真值）
+- [x] npm 发布（v0.1.0–v0.6.1，awesome-dsh-plugin 市场在售）
+- [ ] opencode / pi / claude-code 会话源（复用 dsh-import-agents 的 reader）
+- [ ] 发布自动化（版本 bump + PTY 发布一条命令，当前仍按 RELEASE.md 手动走）
