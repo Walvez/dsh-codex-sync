@@ -96,6 +96,16 @@ dsh-codex-sync doctor                   # 体检: 技能/会话/cloudflare 握�
 | `mcpMirrorSilent` | `[]` | 静音名单：这些 stdio 服务器以 `sh -c '… 2>/dev/null'` 启动，屏蔽子进程 stderr 噪音（如 exa 的 mcp-remote 流量日志）；协议走 stdin/stdout，安全 |
 | `autoImport` | `false` | 启动自动增量导入（第一个 startup 会话时）；`/auto-import` 开关持久化后覆盖此默认值 |
 
+## 本地测试
+
+```
+npm test
+```
+
+- `test/host.smoke.mjs` — 宿主冒烟：命令注册、CommandInvocation 参数解析、/auto-import 持久化、镜像状态（含静音/排除/禁用原因）
+- `test/client.render.mjs` — client bundle 加载 + 真实 React SSR 渲染冒烟
+- 发布流程：**先本地 `npm test` 全绿 → 推送 GitHub → 再发布 npm**（避免线上反复更新）
+
 ## 自动 vs 手动
 
 | 功能 | 同步方式 | 触发 |
