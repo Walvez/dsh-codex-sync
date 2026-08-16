@@ -106,6 +106,8 @@ npm test
 - `test/client.render.mjs` — client bundle 加载 + 真实 React SSR 渲染冒烟
 - 发布流程：**先本地 `npm test` 全绿 → 推送 GitHub → 再发布 npm**（避免线上反复更新）
 
+- 导入时会话内只保留真实对话：codex 注入的系统块（`<recommended_plugins>`、`<environment_context>`、AGENTS.md 指令等）自动剥离，标题取第一条真实用户消息（0.6.1）
+
 ## 自动 vs 手动
 
 | 功能 | 同步方式 | 触发 |
