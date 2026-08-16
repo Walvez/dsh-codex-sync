@@ -89,6 +89,7 @@ dsh-codex-sync doctor                   # 体检: 技能/会话/cloudflare 握�
 | `mcpMirror` | `true` | 自动镜像 codex 的 mcp_servers |
 | `mcpMirrorDeny` | `[]` | 额外不镜像的服务器名（`dsh-plugins` 恒排除） |
 | `mcpMirrorOnly` | 未设置 | 设置后只镜像这些名字 |
+| `mcpMirrorSilent` | `[]` | 静音名单：这些 stdio 服务器以 `sh -c '… 2>/dev/null'` 启动，屏蔽子进程 stderr 噪音（如 exa 的 mcp-remote 流量日志）；协议走 stdin/stdout，安全 |
 
 ## 自动 vs 手动
 

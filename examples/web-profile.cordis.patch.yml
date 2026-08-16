@@ -11,6 +11,8 @@
 #   - MCP 自动镜像: mcp__cloudflare-api__docs/search/execute ✓
 #     mcp__exa__web_search_exa / web_search_advanced_exa / web_fetch_exa / agent_run ✓
 #   - node_repl 被排除(ChatGPT.app 私有协议), dsh-plugins 恒排除(防递归)
+#   - mcpMirrorSilent 屏蔽 exa 的 mcp-remote stderr 流量日志(控制台噪音),
+#     功能不受影响 —— 其他爱打日志的 stdio 服务器同理加入名单即可
 #   - 斜杠命令 /import-codex /import-all /attach-workspaces 可用
 - insert:
     - id: codex-sync
@@ -19,3 +21,5 @@
         maxSkills: 30
         mcpMirrorDeny:
           - node_repl
+        mcpMirrorSilent:
+          - exa
