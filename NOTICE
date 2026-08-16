@@ -14,7 +14,8 @@ files retain their original module headers.
 2. dsh-import-agents (c) Chang-Tong / dongzhangust, MIT
    - Basis for lib/codex-reader.mjs, lib/convert.mjs, lib/dsh-writer.mjs,
      lib/attach-workspaces.mjs (codex session parsing, DSH event conversion,
-     persistence writing, workspace attach) and the slash-command grammar.
+     persistence writing, workspace attach), the slash-command grammar, and
+     lib/client.js (composer Sync button adapted from their SyncButton.tsx).
    - https://github.com/Chang-Tong/dsh-import-agents
 
 3. deepseek-harness-plugin-mcp (c) bobleer, MIT
