@@ -1,0 +1,26 @@
+# dsh bundle patch: inserts dsh-codex-sync into a profile's layer stack.
+#
+# Add this package to a profile's `dsh.profile.bundles` (or `dsh plugin add`)
+# and this layer auto-mounts the plugin with the defaults below. Every option
+# can be overridden by a later row or the profile's own cordis.patch.yml
+# (later layers win in this harness).
+#
+#   dsh --profile <name> plugin add dsh-codex-sync   (or list it in bundles)
+#   then restart dsh web.
+#
+# Config reference (all optional):
+#   codexHome:            codex config dir            (default ~/.codex)
+#   maxSkills:            max codex skills registered (default 100)
+#   enableSkills:         register first-class skills (default true)
+#   enableInstructions:   inject instructions.md      (default true)
+#   enableConfig:         inject config.toml summary  (default true)
+#   enableImport:         /import-codex & friends     (default true)
+#   maxSessionBytes:      import skip size guard      (default 256 MiB)
+#   mcpServers:           explicit MCP servers to mount
+#   mcpMirror:            auto-mirror codex mcp servers (default true)
+#   mcpMirrorDeny:        extra names never mirrored
+#   mcpMirrorOnly:        mirror ONLY these names
+- insert:
+    - id: codex-sync
+      name: 'dsh-codex-sync'
+      config: {}

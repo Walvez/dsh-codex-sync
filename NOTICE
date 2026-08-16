@@ -1,0 +1,25 @@
+dsh-codex-sync — Attribution NOTICE
+===================================
+
+This project integrates and adapts the following MIT-licensed open-source
+works. Their copyright notices are preserved below, and the adapted source
+files retain their original module headers.
+
+1. dsh-plugin-codex-bridge (c) YYTbit, MIT
+   - Basis for lib/bridge.js (codex skills/instructions/config → dsh
+     system prompt) and the boot-fix notes (inject declaration, synchronous
+     section text providers).
+   - https://github.com/YYTbit/dsh-plugin-codex-bridge
+
+2. dsh-import-agents (c) Chang-Tong / dongzhangust, MIT
+   - Basis for lib/codex-reader.mjs, lib/convert.mjs, lib/dsh-writer.mjs,
+     lib/attach-workspaces.mjs (codex session parsing, DSH event conversion,
+     persistence writing, workspace attach) and the slash-command grammar.
+   - https://github.com/Chang-Tong/dsh-import-agents
+
+3. deepseek-harness-plugin-mcp (c) bobleer, MIT
+   - The reverse MCP server installed by `dsh-codex-sync codex-install`,
+     exposing dsh plugin tools to Codex.
+   - https://github.com/bobleer/deepseek-harness-plugin-mcp
+
+All three are distributed under the MIT License; see LICENSE.
