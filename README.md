@@ -41,8 +41,8 @@
 - 幂等：已导入的 id 自动跳过，重复执行只补新增
 - **自动挂 workspace**：按 cwd 建/挂工作区，一次导入全量归位，不漏
 - **679MB 崩溃修复**：单文件 > `maxSessionBytes`（默认 256MiB）直接跳过并提示，避免 Node 字符串上限崩溃中断整个导入（实战中 679MB 的 Surge 会话踩过）
-- **autoImport**（默认关；`/auto-import` 开关持久化到 `~/.dsh/codex-sync.json`，覆盖配置默认值）：开启后第一个 startup 会话时自动增量导入
-- **composer 同步设置菜单**：`同步设置 ▾` 下拉 = 立即导入 / 自动导入开·关 / 查看镜像状态
+- **autoImport**（默认关；菜单开关/`/auto-import` 持久化到设置命名空间，覆盖配置默认值）：开启后第一个 startup 会话时自动增量导入
+- **composer 同步设置菜单**：`同步设置 ▾` 下拉 = 立即导入 / 自动导入开·关 / 查看镜像状态；**打开菜单不产生对话卡片**（徽章镜像自本浏览器最近一次切换），导入/镜像/切换结果都以对话卡片展示
 
 ### 4. 双向 MCP
 **方向 B（自动镜像，核心亮点）**：以 `~/.codex/config.toml` 的 `[mcp_servers.*]` 为唯一事实源，
@@ -94,7 +94,7 @@ dsh-codex-sync doctor                   # 体检: 技能/会话/cloudflare 握�
 | `mcpMirrorDeny` | `[]` | 额外不镜像的服务器名（`dsh-plugins` 恒排除） |
 | `mcpMirrorOnly` | 未设置 | 设置后只镜像这些名字 |
 | `mcpMirrorSilent` | `[]` | 静音名单：这些 stdio 服务器以 `sh -c '… 2>/dev/null'` 启动，屏蔽子进程 stderr 噪音（如 exa 的 mcp-remote 流量日志）；协议走 stdin/stdout，安全 |
-| `autoImport` | `false` | 启动自动增量导入（第一个 startup 会话时）；`/auto-import` 开关持久化后覆盖此默认值 |
+| `autoImport` | `false` | 启动自动增量导入（第一个 startup 会话时）；菜单开关/`/auto-import` 持久化到 `~/.dsh/codex-sync.json`，覆盖此默认值；`/mcp-status` 显示当前真值 |
 
 ## 本地测试
 

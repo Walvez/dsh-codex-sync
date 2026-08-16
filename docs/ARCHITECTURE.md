@@ -78,9 +78,13 @@ examples/web-profile.cordis.patch.yml   production-verified mount example
     `/import-codex`, `/import-all`, `/attach-workspaces`, `/mcp-status`,
     `/auto-import`. `parseInput` handles `--key value` and `--key=value`.
     `/mcp-status` reads the mirror handle's `getStatus()` (per-server reason:
-    mounted/denied/disabled/silent/failed…). `/auto-import` persists to
-    `lib/state.js` (`~/.dsh/codex-sync.json`); `effectiveAutoImport` lets the
-    persisted toggle override the `autoImport` config default.
+    mounted/denied/disabled/silent/failed…) and appends the authoritative
+    `autoImport: on|off` line. `/auto-import` persists to `lib/state.js`
+    (`~/.dsh/codex-sync.json`); `effectiveAutoImport` lets the persisted
+    toggle override the `autoImport` config default. The platform settings
+    seam refuses third-party namespaces to the web client (dsh-host-apiproxy
+    allowlist), so the client badge mirrors the last toggle in localStorage
+    and the toggle itself runs the `/auto-import` command (result card).
  4. **autoImport** — when effective, hooks `agent/session-start`
     (`source === 'startup'`, runs once): services are guaranteed ready and
     the import does not delay boot.

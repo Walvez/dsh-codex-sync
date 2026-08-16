@@ -11,7 +11,7 @@
  * owns its handle and can dispose it — closing the fs.watch handle that
  * would otherwise keep the event loop alive and hang the test runner.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -27,7 +27,9 @@ function installFakeMcpClient() {
   writeFileSync(join(FAKE, 'index.js'), 'export default class FakeMcpClient { constructor() {} }\n')
 }
 function removeFakeMcpClient() {
-  rmSync(join(PROJECT, 'node_modules', '@deepseek-ai'), { recursive: true, force: true })
+  // remove ONLY the fake fixture package — never the whole @deepseek-ai scope
+  // (it also contains real deps like cordis / schemastery)
+  rmSync(FAKE, { recursive: true, force: true })
 }
 
 test('host plugin: commands, invocation args, auto-import persistence, mirror status', async (t) => {
@@ -105,9 +107,12 @@ test('host plugin: commands, invocation args, auto-import persistence, mirror st
     // plugin row with mcpMirror:false reports the disabled message
     const disabled = (await byName['mcp-status'].handler(invocation())).text
     assert.match(disabled, /未启用/)
+    // /mcp-status also reports the authoritative autoImport value
+    assert.match(disabled, /autoImport: off/)
   } finally {
     // closing the mirror's fs.watch lets the event loop drain (no runner hang)
     try { mirror?.dispose?.() } catch { /* ignore */ }
     removeFakeMcpClient()
   }
 })
+

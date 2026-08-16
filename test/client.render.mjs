@@ -49,7 +49,10 @@ test('client bundle: loads, applies, renders SyncMenu without throwing', async (
     inject(name, cb) { assert.equal(name, 'conversation.input.left'); cb() },
     register(def, component) { capturedInject = def.inject; capturedComponent = component },
   }
-  plugin.apply({ slots, remote: { commands: {} } })
+  plugin.apply({
+    slots,
+    remote: { commands: {} },
+  })
   assert.ok(capturedComponent, 'register must be called with a component')
   assert.equal(typeof capturedInject, 'function', 'slot inject must be a function')
 
@@ -62,6 +65,7 @@ test('client bundle: loads, applies, renders SyncMenu without throwing', async (
   const html = renderToStaticMarkup(React.createElement(capturedComponent, { runCommand: actions.runCommand }))
   assert.match(html, /Sync|同步设置/, 'button label must render')
   assert.match(html, /▾/, 'closed chevron must render')
-  // popover must not render while idle
-  assert.doesNotMatch(html, /popover/, 'no popover in idle state')
+  // closed menu must not render its items (the badge lives inside it;
+  // settings sync happens in a client effect, which SSR does not run)
+  assert.doesNotMatch(html, /立即导入/, 'menu must stay closed in the idle render')
 })
