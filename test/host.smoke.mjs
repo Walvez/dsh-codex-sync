@@ -35,6 +35,32 @@ function removeFakeMcpClient() {
 test('host plugin: commands, invocation args, auto-import persistence, mirror status', async (t) => {
   process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'cx-sync-test-'))
   installFakeMcpClient()
+  // Hermetic mirror fixture: a throwaway codex config so the mirror never
+  // reads the real ~/.codex/config.toml (which changes as the user adds MCP
+  // servers like gmail).
+  const codexHome = join(process.env.DSH_HOME, 'codex-fixture')
+  mkdirSync(codexHome, { recursive: true })
+  writeFileSync(join(codexHome, 'config.toml'), `
+[mcp_servers]
+[mcp_servers.cloudflare-api]
+type = "streamable-http"
+url = "https://mcp.cloudflare.com/mcp"
+bearer_token_env_var = "CLOUDFLARE_API_TOKEN"
+[mcp_servers.exa]
+type = "stdio"
+command = "exa"
+env = { EXA_API_KEY = "test-key" }
+[mcp_servers.node_repl]
+type = "stdio"
+command = "node_repl"
+[mcp_servers.dsh-plugins]
+type = "stdio"
+command = "dsh-plugins"
+[mcp_servers.computer-use]
+enabled = false
+type = "stdio"
+command = "computer"
+`.trim() + '\n')
   let mirror = null // hoisted: the finally clause cannot see try-block consts
   try {
     const cordisRoot = dshDep('@deepseek-ai/cordis')
@@ -60,7 +86,7 @@ test('host plugin: commands, invocation args, auto-import persistence, mirror st
     }
     await ctx.plugin(StubSystemPrompt)
     await ctx.plugin(StubCommands)
-    const MCP_CONFIG = { codexHome: '/Users/walve/.codex', maxSkills: 30, mcpMirrorDeny: ['node_repl'], mcpMirrorSilent: ['exa'] }
+    const MCP_CONFIG = { codexHome, maxSkills: 30, mcpMirrorDeny: ['node_repl'], mcpMirrorSilent: ['exa'] }
     await ctx.plugin(plugin, { ...MCP_CONFIG, mcpMirror: false }) // mirror tested separately below
     await new Promise((r) => setTimeout(r, 100))
 

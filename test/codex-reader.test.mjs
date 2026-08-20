@@ -68,3 +68,122 @@ test('convert: control-only user message opens no turn and never seeds the title
   assert.ok(!title.includes('recommended_plugins'), 'title must not contain control-block text')
   assert.ok(!title.includes('AGENTS.md'), 'title must not contain AGENTS.md text')
 })
+
+// ═══ v0.7.0-new-schema: custom_tool_call / custom_tool_call_output / reasoning,
+// image fragments, truncated real tool results.
+
+function rolloutOf(events, meta = { id: 'sess-new', cwd: '/tmp/proj', timestamp: '2026-08-17T10:00:00.000Z' }) {
+  const lines = [
+    { type: 'session_meta', payload: meta },
+    ...events,
+  ]
+  return lines.map((e) => JSON.stringify(e)).join('\n') + '\n'
+}
+
+const msg = (type, time, role, blocks) => ({ type: 'response_item', timestamp: time, payload: { type: 'message', id: `m-${time}`, role, content: blocks } })
+const call = (time, id, name, input) => ({ type: 'response_item', timestamp: time, payload: { type: 'custom_tool_call', call_id: id, name, input } })
+const out = (time, id, output, isError = false) => ({ type: 'response_item', timestamp: time, payload: { type: 'custom_tool_call_output', call_id: id, output, is_error: isError } })
+const reason = (time, summary) => ({ type: 'response_item', timestamp: time, payload: { type: 'reasoning', summary } })
+
+let n = 0
+const write = (file, text) => { writeFileSync(file, text); return file }
+const nextFile = (kind) => write(join(mkdtempSync(join(tmpdir(), 'cx-new-')), `${kind}-${++n}.jsonl`), '')
+
+test('new schema: tool call + real output fold into one assistant message with real result', () => {
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '改一下 main.js' }]),
+    msg('T2', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '我用编辑工具。' }]),
+    call('T3', 'call-1', 'edit', '*** Begin Patch\ndiff --git a/main.js b/main.js\n@@ start\n-let x = 1\n+let x = 2'),
+    out('T4', 'call-1', '文件已修改：main.js (+1 -1)'),
+    msg('T5', '2026-08-17T10:00:09Z', 'assistant', [{ type: 'output_text', text: '改好了。' }]),
+  ]
+  const file = nextFile('tools'); write(file, rolloutOf(events))
+  const { messages } = parseCodexSession(file)
+  // user, assistant(text), assistant(tool call+result), assistant(text)
+  assert.equal(messages.length, 4)
+  const toolMsg = messages[2]
+  assert.equal(toolMsg.role, 'assistant')
+  const calls = toolMsg.blocks.filter((b) => b.type === 'tool-call')
+  const results = toolMsg.blocks.filter((b) => b.type === 'tool-result')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].id, 'call-1')
+  assert.equal(calls[0].name, 'edit')
+  assert.match(calls[0].arguments, /Begin Patch/, 'apply_patch body kept as raw args string')
+  assert.equal(results.length, 1)
+  assert.equal(results[0].toolCallId, 'call-1')
+  assert.equal(results[0].content[0].text, '文件已修改：main.js (+1 -1)')
+
+  // convert: real tool/result surface event, real content, no tool-result block
+  // in the written assistant message content
+  const events2 = buildDshEvents(messages, { toolEvents: true })
+  const toolResult = events2.find((e) => e.type === 'tool/result')
+  assert.ok(toolResult, 'a tool/result event must exist')
+  assert.equal(toolResult.data.message.content[0].content[0].text, '文件已修改：main.js (+1 -1)')
+  const written = events2.find((e) => e.type === 'assistant/message')
+  assert.ok(written.data.message.content.every((b) => b.type !== 'tool-result'), 'tool-result block must not appear in assistant content')
+})
+
+test('new schema: oversized tool output is capped with a truncation note', () => {
+  const big = 'y'.repeat(9000)
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '列目录' }]),
+    call('T2', 'call-9', 'list_files', '{}'),
+    out('T3', 'call-9', big),
+    msg('T4', '2026-08-17T10:00:09Z', 'assistant', [{ type: 'output_text', text: '太长我截断了。' }]),
+  ]
+  const file = nextFile('cap'); write(file, rolloutOf(events))
+  const { messages } = parseCodexSession(file)
+  const blocks = messages.flatMap((m) => m.blocks).filter((b) => b.type === 'tool-result')
+  assert.equal(blocks.length, 1)
+  const text = blocks[0].content[0].text
+  assert.ok(text.length <= 4050, `capped: ${text.length}`)
+  assert.match(text, /…\[截断：源输出 9000 字符\]/)
+})
+
+test('new schema: reasoning summaries merge into the pending assistant message', () => {
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '1+1?' }]),
+    reason('T2', '先心算，1+1=2'),
+    msg('T3', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '等于 2。' }]),
+  ]
+  const file = nextFile('reason'); write(file, rolloutOf(events))
+  const { messages } = parseCodexSession(file)
+  assert.equal(messages.length, 3)
+  const reasoning = messages[1].blocks.filter((b) => b.type === 'reasoning')
+  assert.equal(reasoning.length, 1)
+  assert.equal(reasoning[0].text, '先心算，1+1=2')
+})
+
+test('new schema: raw image fragments are stripped from user text', () => {
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [
+      { type: 'input_text', text: '# Files mentioned by the user:\n\n## 照片 1.jpg content' },
+      { type: 'input_text', text: '<image name=[Image #1] path="/tmp/codex-remote-attachments/abc.jpg">' },
+      { type: 'input_text', text: '</image>' },
+    ]),
+    msg('T2', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '我看到了。' }]),
+  ]
+  const file = nextFile('img'); write(file, rolloutOf(events))
+  const { messages } = parseCodexSession(file)
+  assert.equal(messages.length, 2)
+  const userText = messages[0].blocks.map((b) => b.text).join('\n')
+  assert.doesNotMatch(userText, /<image/, 'image fragments must be stripped')
+  assert.match(userText, /# Files mentioned by the user:/)
+})
+
+test('legacy schema: tool_use blocks inside message content still map to tool-calls', () => {
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '读文件' }]),
+    msg('T2', '2026-08-17T10:00:05Z', 'assistant', [
+      { type: 'output_text', text: '读取中' },
+      { type: 'tool_use', id: 'call-7', name: 'read_file', input: { path: '/tmp/x.txt' } },
+    ]),
+  ]
+  const file = nextFile('legacy'); write(file, rolloutOf(events))
+  const { messages } = parseCodexSession(file)
+  const toolCall = messages[1].blocks.find((b) => b.type === 'tool-call')
+  assert.ok(toolCall)
+  assert.equal(toolCall.id, 'call-7')
+  assert.equal(toolCall.name, 'read_file')
+  assert.match(toolCall.arguments, /x\.txt/)
+})

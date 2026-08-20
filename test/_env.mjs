@@ -53,7 +53,12 @@ function readFileSyncSafe(path) {
 /** node_modules subpath inside the dsh package (react, react-dom, cordis…). */
 export function dshDep(name) {
   const root = dshRoot()
-  if (!root) return undefined
-  const candidate = join(root, 'node_modules', name)
-  return existsSync(join(candidate, 'package.json')) ? candidate : undefined
+  if (root) {
+    const candidate = join(root, 'node_modules', name)
+    if (existsSync(join(candidate, 'package.json'))) return candidate
+  }
+  // CI fallback: no `dsh` CLI installed, but the project's own devDependencies
+  // (cordis / react / react-dom) live in the repo node_modules.
+  const local = join(import.meta.dirname, '..', 'node_modules', name)
+  return existsSync(join(local, 'package.json')) ? local : undefined
 }
