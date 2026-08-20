@@ -24,6 +24,16 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const PKG_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
 
 const HOME = homedir()
 const CODEX_CONFIG = join(HOME, '.codex', 'config.toml')
@@ -180,7 +190,7 @@ async function testCloudflareMcp(token) {
         jsonrpc: '2.0',
         id: 1,
         method: 'initialize',
-        params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'dsh-codex-sync-doctor', version: '0.1.0' } },
+        params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'dsh-codex-sync-doctor', version: PKG_VERSION } },
       }),
     })
     const text = await res.text()
@@ -212,6 +222,7 @@ async function cmdDoctor(args) {
     const files = listCodexSessions(join(CODEX_HOME, 'sessions'))
     let big = 0
     let ok = 0
+    let subagents = 0
     const { statSync } = await import('node:fs')
     for (const f of files) {
       let size = 0
@@ -223,13 +234,17 @@ async function cmdDoctor(args) {
       if (size > 256 * 1024 * 1024) big += 1
       else {
         try {
-          if (parseCodexSession(f).header.id) ok += 1
+          const header = parseCodexSession(f).header
+          if (header.id) {
+            ok += 1
+            if (header.parentThreadId) subagents += 1
+          }
         } catch {
           /* unreadable */
         }
       }
     }
-    lines.push(`codex sessions: ${files.length} files, ${ok} importable, ${big} oversized (>256MiB, skipped by import)`)
+    lines.push(`codex sessions: ${files.length} files, ${ok} importable, ${subagents} sub-agent threads (filtered from import), ${big} oversized (>256MiB, skipped)`)
   } catch (error) {
     lines.push(`codex sessions: scan failed (${error.message})`)
   }
@@ -282,7 +297,7 @@ switch (cmd) {
   case '--help':
   case '-h':
   case 'help':
-    console.log(`dsh-codex-sync ${'0.1.0'} — Codex ↔ dsh sync CLI
+    console.log(`dsh-codex-sync ${PKG_VERSION} — Codex ↔ dsh sync CLI
 
 Usage:
   dsh-codex-sync codex-install   [--profile web] [--allow-runtime] [--dir ~/.dsh-bridge] [--no-build]

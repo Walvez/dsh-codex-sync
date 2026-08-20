@@ -107,6 +107,9 @@ command = "computer"
     // /import-codex: args parse from invocation.rawInput
     const { parseInput } = await import(join(PROJECT, 'lib', 'index.js'))
     assert.deepEqual(parseInput(' --limit 5 --since 2026-01-01'), { limit: 5, since: 1767225600000 })
+    // bare boolean flags (e.g. --include-subagents) must not swallow the next value token
+    assert.deepEqual(parseInput(' --include-subagents'), { 'include-subagents': true })
+    assert.deepEqual(parseInput(' --include-subagents --limit 3'), { 'include-subagents': true, limit: 3 })
 
     // mirror: direct instance so the test owns the handle (dispose closes fs.watch)
     mirror = startMcpMirror(ctx, MCP_CONFIG.codexHome, MCP_CONFIG)

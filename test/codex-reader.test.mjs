@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseCodexSession } from '../lib/codex-reader.mjs'
+import { parseCodexSession, isSubagentThread } from '../lib/codex-reader.mjs'
 import { buildDshEvents, deriveImportTitle } from '../lib/convert.mjs'
 
 const ROLLOUT = [
@@ -186,4 +186,16 @@ test('legacy schema: tool_use blocks inside message content still map to tool-ca
   assert.equal(toolCall.id, 'call-7')
   assert.equal(toolCall.name, 'read_file')
   assert.match(toolCall.arguments, /x\.txt/)
+})
+
+
+test('reader: parent_thread_id marks a sub-agent thread header', () => {
+  const meta = { id: 'sess-sub', cwd: '/tmp', timestamp: '2026-08-17T10:00:00.000Z', parent_thread_id: 'sess-main', agent_nickname: 'Einstein' }
+  const file = nextFile('subagent-marker')
+  write(file, rolloutOf([{ type: 'session_meta', payload: meta }]))
+  const { header } = parseCodexSession(file)
+  assert.equal(header.parentThreadId, 'sess-main')
+  assert.equal(header.agentNickname, 'Einstein')
+  assert.equal(isSubagentThread(header), true)
+  assert.equal(isSubagentThread({}), false)
 })

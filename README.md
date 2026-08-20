@@ -110,6 +110,8 @@ dsh-codex-sync doctor                   # 体检: 技能/会话/cloudflare 握�
 | `enableImport` | `true` | 注册 /import-codex 等命令 |
 | `maxSkills` | `100` | 最多注册的技能数 |
 | `maxSessionBytes` | `268435456` (256MiB) | 导入大小保护 |
+| `importSubagents` | `false` | codex 子代理线程默认过滤——它们约占 rollout 总量一半（`parent_thread_id` 标记，如 Socrates/Popper），只导入主会话让列表干净；`true` 连子代理一起，或临时 `/import-codex --include-subagents` |
+| `--include-subagents` | - | `/import-codex` 的裸布尔 flag（无需值）：本次导入连子代理线程一起 |
 | `mcpServers` | `{}` | 显式 MCP 服务器（dsh-mcp-client 配置） |
 | `mcpMirror` | `true` | 自动镜像 codex 的 mcp_servers |
 | `mcpMirrorDeny` | `[]` | 额外不镜像的服务器名（`dsh-plugins` 恒排除） |
