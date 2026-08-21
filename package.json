@@ -1,6 +1,6 @@
 {
   "name": "dsh-codex-sync",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "One-tap Codex move-in to DSH: auto-import Codex project chats; two-way Skills and MCP sync.",
   "keywords": [
     "dsh",

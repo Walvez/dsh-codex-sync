@@ -2,7 +2,7 @@
 
 # ⚡ dsh-codex-sync
 
-**OpenAI Codex ⇄ DeepSeek Harness (DSH) 一站式双向同步插件**
+**Codex 一键搬家到 DSH：Codex 项目对话自动导入 DSH，Skills、MCP 双向同步。**
 
 <p align="center">
   <a href="README.md"><b>English</b></a> •
@@ -16,14 +16,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/Walvez/dsh-codex-sync/)
 
-自动将 Codex 的技能、指令提示词、模型配置、会话历史与 MCP 服务器同步进 DSH；一键为 Codex 安装反向 MCP 桥，提供 15+ 个 DSH 插件管理专属工具。
+<br/>
 
-<p align="center">
-  <img src="docs/sync-menu.zh.png" alt="Composer 同步设置菜单：立即导入、MCP 状态、功能开关" width="720"/>
-</p>
-<p align="center">
-  <img src="docs/import-picker.png" alt="导入对话框：按项目勾选对话，已导入灰勾，有更新可再导" width="480"/>
-</p>
+<table>
+  <tr>
+    <td align="center" width="55%">
+      <b>🎛️ Composer 同步控制面板</b><br/>
+      <img src="docs/sync-menu.zh.png" alt="Composer 同步设置菜单：立即导入、MCP 状态、功能开关" width="100%"/>
+    </td>
+    <td align="center" width="45%">
+      <b>💬 智能项目导入对话框</b><br/>
+      <img src="docs/import-picker.png" alt="导入对话框：按项目勾选对话，已导入灰勾，有更新可再导" width="100%"/>
+    </td>
+  </tr>
+</table>
 
 </div>
 
@@ -31,13 +37,13 @@
 
 ## 🚀 核心特性
 
-- **✨ 技能实时挂载**：`~/.codex/skills/*/SKILL.md` 直接注册为 DSH Skills——改文件，下次目录扫描即生效。不用拷贝、不会漂移。插件自带 **`codex-sync` skill**，可用 agent 预演导入、改同步开关、查看 MCP 状态。
-- **⚡ 提示词与配置动态注入**：动态读取 `~/.codex/instructions.md`（或 `AGENTS.md`）与 `config.toml`——改动在下一轮组装提示词时立即生效，无需重启。
-- **💬 智能历史会话导入**：**立即导入** 弹出按项目分组的选择框——可搜索标题、过滤子代理、已导入灰勾、Codex 续聊过的标「有更新」可再导。也支持 `/import-codex --dry-run`。
-- **🔌 双向 MCP 生态互联**：
+- **✨ 技能实时挂载**：`~/.codex/skills/*/SKILL.md` 直接注册为 DSH 原生 Skills——改文件，下次目录扫描即生效。不用拷贝、不会漂移。
+- **🤖 插件内置 `codex-sync` 智能体技能**：自带 Agent Skill，可直接让 DSH Agent 为你执行导入预演、修改开关或排查 MCP 镜像状态。
+- **💬 智能历史会话导入**：点击 **立即导入** 即可呼出项目树对话框，支持即时搜索、子代理嵌套折叠、已导入灰勾标记，以及续聊对话增量追加。
+- **🔌 双向 MCP 互联互通**：
   - **Codex → DSH**：自动监听并镜像 `config.toml` 中的 `[mcp_servers.*]`。
-  - **DSH → Codex**：自动配置 `[mcp_servers.dsh-plugins]`，让 Codex 具备搜索、检查、安装 DSH 插件能力。
-- **🎛️ Composer 工具栏设置面板**：输入框旁内置 **同步设置 ▾** 菜单，支持一键导入、查看镜像状态及所有功能开关实时切换，支持鼠标悬浮浮窗（ⓘ）说明。
+  - **DSH → Codex**：自动配置 `[mcp_servers.dsh-plugins]` 反向桥，让 Codex 可搜索、检查与安装 DSH 插件。
+- **🌓 原生深浅色主题适配**：严格遵从 DSH 设计系统令牌（`--dsw-alias-*`），配备矢量图标、顺滑 iOS 风格滑块与实时悬浮说明（ⓘ）。
 
 ---
 
@@ -81,7 +87,7 @@ dsh-codex-sync doctor
 
 | 分组 | 项目 | 对应命令 / 配置键 | 行为说明 |
 |---|---|---|---|
-| **操作** | 立即导入 | `/import-all` | 立即触发增量历史会话导入 |
+| **操作** | 立即导入 | `/import-all` | 打开项目选择对话框并导入对话 |
 | | 查看镜像状态 | `/mcp-status` | 查看每个 MCP 服务器的镜像状态与诊断原因 |
 | | 刷新状态 | `/codex-settings` | 重新从宿主读取所有开关的真实值 |
 | **功能开关** | 导入命令 | `enableImport` | 启用 `/import-codex` 等导入命令 |
@@ -100,7 +106,7 @@ dsh-codex-sync doctor
 
 | 指令 | 参数 | 说明 |
 |---|---|---|
-| `/import-codex` | `[--dry-run]` `[--limit N]` `[--project 子串]` `[--since 时间]` `[--include-subagents]` | 导入 Codex 会话（`--dry-run` 只打印 `[would-import]`，不写盘） |
+| `/import-codex` | `[--dry-run]` `[--ids a,b]` `[--limit N]` `[--project 子串]` `[--since 时间]` `[--include-subagents]` | 导入 Codex 会话（`--dry-run` 只打印 `[would-import]`，不写盘） |
 | `/import-all` | *(同上)* | `/import-codex` 的别名 |
 | `/attach-workspaces` | *无* | 补挂所有导入会话到对应的 CWD 工作区 |
 | `/mcp-status` | *无* | 查看所有 MCP 镜像服务器的实时状态与原因 |
@@ -130,33 +136,19 @@ dsh-codex-sync doctor
 
 ---
 
+## 📋 兼容性对照
+
+完整对照表请参阅 **[docs/compat.md](docs/compat.md)**（技能、指令、MCP、会话与增量更新机制）。
+
+---
+
 ## 🧪 测试验证
 
 ```bash
 npm test
 ```
 
-封闭测试覆盖宿主生命周期、客户端 SSR、rollout 解析、导入 dry-run / 子代理过滤、持久化开关。CI 另有一步用临时 profile 启动 DSH，确认插件能挂上。
-
-欢迎提交补丁，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
----
-
-## 📋 同步范围
-
-完整对照表见 **[docs/compat.md](docs/compat.md)**：技能、指令、MCP、会话与子代理处理。
-
-导入前可预演：
-
-```bash
-/import-codex --dry-run
-```
-
----
-
-## 🔒 安全
-
-请通过 [SECURITY.md](SECURITY.md) **私下**报告漏洞，不要开公开 Issue。
+封闭测试覆盖宿主生命周期、客户端 SSR、rollout 解析、增量更新、子代理过滤以及持久化开关，无需全局安装 DSH 即可直接运行。
 
 ---
 
