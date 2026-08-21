@@ -19,6 +19,35 @@ import assert from 'node:assert/strict'
 import { dshDep } from './_env.mjs'
 
 const PROJECT = join(import.meta.dirname, '..')
+const STATE_DIR = process.env.DSH_HOME ?? join(tmpdir(), 'cx-sync-state-test')
+
+test('state: persisted settings override config defaults (DSH_HOME temp)', async () => {
+  const tempHome = mkdtempSync(join(tmpdir(), 'cx-sync-state-'))
+  const prevHome = process.env.DSH_HOME
+  process.env.DSH_HOME = tempHome
+  try {
+    const { effectiveSetting, writeState, readState } = await import(join(PROJECT, 'lib', 'state.js'))
+    // untouched → config defaults win
+    assert.equal(effectiveSetting('enableInstructions', true), true)
+    assert.equal(effectiveSetting('enableInstructions', false), false)
+    assert.equal(effectiveSetting('autoImport', false), false)
+    // persisted true overrides a false config default (the UI's "turn it on")
+    writeState({ enableInstructions: true })
+    assert.equal(effectiveSetting('enableInstructions', false), true)
+    // persisted false overrides a true config default (the UI's "turn it off")
+    writeState({ enableInstructions: false })
+    assert.equal(effectiveSetting('enableInstructions', true), false)
+    // autoImport still routes through the same store
+    writeState({ autoImport: true })
+    assert.equal(effectiveSetting('autoImport', false), true)
+    const raw = readState()
+    assert.equal(raw.autoImport, true)
+    assert.equal(raw.enableInstructions, false)
+  } finally {
+    process.env.DSH_HOME = prevHome ?? ''
+    rmSync(tempHome, { recursive: true, force: true })
+  }
+})
 const FAKE = join(PROJECT, 'node_modules', '@deepseek-ai', 'dsh-mcp-client')
 
 function installFakeMcpClient() {
@@ -91,7 +120,7 @@ command = "computer"
     await new Promise((r) => setTimeout(r, 100))
 
     const names = ctx.commands.registered.map((d) => d.name)
-    assert.deepEqual(names, ['import-codex', 'import-all', 'attach-workspaces', 'mcp-status', 'auto-import'])
+    assert.deepEqual(names, ['import-codex', 'import-all', 'attach-workspaces', 'codex-settings', 'codex-setting', 'mcp-status', 'auto-import'])
 
     const byName = Object.fromEntries(ctx.commands.registered.map((d) => [d.name, d]))
     const invocation = (rawInput = '') => Object.freeze({ commandId: 'x', agent: {}, rawInput, signal: null })
@@ -103,6 +132,22 @@ command = "computer"
     assert.match(read.text, /autoImport=on/, `persisted toggle must read on, got: ${read.text}`)
     const off = await byName['auto-import'].handler(invocation('off'))
     assert.match(off.text, /autoImport=off/)
+
+    // /codex-settings + /codex-setting: machine-readable key=on|off lines that
+    // the Sync settings UI parses; persisted value overrides config default
+    const listAll = await byName['codex-settings'].handler(invocation())
+    const listText = listAll.text
+    assert.match(listText, /^enableImport=on/m, 'settings list must be machine-readable')
+    assert.match(listText, /^mcpMirror=off/m, 'mcpMirror must read the config default (false here)')
+    assert.match(listText, /^enableInstructions=on/m)
+    const turnOff = await byName['codex-setting'].handler(invocation('enableInstructions off'))
+    assert.match(turnOff.text, /^enableInstructions=off/, 'toggle must echo key=value first')
+    assert.match(turnOff.text, /指令注入\s*已关闭/)
+    const after = await byName['codex-settings'].handler(invocation())
+    assert.match(after.text, /^enableInstructions=off/m, 'persisted toggle must show in the list')
+    assert.match(after.text, /^enableImport=on/m)
+    const unknown = await byName['codex-setting'].handler(invocation('nope on'))
+    assert.match(unknown.text, /未知设置/)
 
     // /import-codex: args parse from invocation.rawInput
     const { parseInput } = await import(join(PROJECT, 'lib', 'index.js'))

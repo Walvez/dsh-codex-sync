@@ -1,6 +1,6 @@
 {
   "name": "dsh-codex-sync",
-  "version": "0.7.1",
+  "version": "0.7.4",
   "description": "One-stop bidirectional sync between OpenAI Codex and DeepSeek Harness (dsh): first-class skills, session import, workspace attach, MCP client mounting, and a Codex-side reverse MCP installer.",
   "keywords": [
     "dsh",
@@ -30,13 +30,14 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "README.zh-CN.md",
     "bin",
     "cordis.patch.yml",
     "examples",
-    "README.md",
-    "LICENSE",
-    "NOTICE"
+    "lib"
   ],
   "scripts": {
     "test": "node --test test/host.smoke.mjs test/client.render.mjs test/codex-reader.test.mjs test/import-service.test.mjs"
