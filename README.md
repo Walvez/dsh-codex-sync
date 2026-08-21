@@ -28,7 +28,7 @@ Sync skills, prompt instructions, config summaries, session history, and MCP ser
 
 ## 🚀 Key Capabilities
 
-- **✨ Live Skills Bridge**: Registers `~/.codex/skills/*/SKILL.md` as first-class DSH skills — edit a file, the next catalog scan picks it up. No copy, no drift. Full SKILL.md bodies and directory resource bases.
+- **✨ Live Skills Bridge**: Registers `~/.codex/skills/*/SKILL.md` as first-class DSH skills — edit a file, the next catalog scan picks it up. No copy, no drift. Full SKILL.md bodies and directory resource bases. Ships a **`codex-sync` skill** so the agent can dry-run imports, toggle settings, and check MCP status for you.
 - **⚡ Live Instructions & Config Injection**: Reads `~/.codex/instructions.md` (or `AGENTS.md`) and `config.toml` dynamically—changes take effect on the next prompt assembly without restart.
 - **💬 Smart Session History Importer**: Imports Codex rollouts into DSH with real tool traces, workspace attach, and sub-agent filtering. Preview with `/import-codex --dry-run` (no writes).
 - **🔌 Bidirectional MCP Ecosystem**: 

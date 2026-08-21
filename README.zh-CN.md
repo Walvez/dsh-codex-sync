@@ -28,7 +28,7 @@
 
 ## 🚀 核心特性
 
-- **✨ 技能实时挂载**：`~/.codex/skills/*/SKILL.md` 直接注册为 DSH 一等公民技能——改文件，下次目录扫描即生效。不用拷贝、不会漂移；完整 SKILL.md 正文与目录资源基址。
+- **✨ 技能实时挂载**：`~/.codex/skills/*/SKILL.md` 直接注册为 DSH Skills——改文件，下次目录扫描即生效。不用拷贝、不会漂移。插件自带 **`codex-sync` skill**，可用 agent 预演导入、改同步开关、查看 MCP 状态。
 - **⚡ 提示词与配置动态注入**：动态读取 `~/.codex/instructions.md`（或 `AGENTS.md`）与 `config.toml`——改动在下一轮组装提示词时立即生效，无需重启。
 - **💬 智能历史会话导入**：将 Codex 会话导入 DSH，保留真实工具调用输出，自动绑定工作区，默认过滤子代理。先 `/import-codex --dry-run` 预演（不写盘）。
 - **🔌 双向 MCP 生态互联**：

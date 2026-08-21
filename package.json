@@ -1,6 +1,6 @@
 {
   "name": "dsh-codex-sync",
-  "version": "0.7.9",
+  "version": "0.8.0",
   "description": "One-tap Codex move-in to DSH: auto-import Codex project chats; two-way Skills and MCP sync.",
   "keywords": [
     "dsh",
@@ -40,10 +40,11 @@
     "cordis.patch.yml",
     "examples",
     "docs",
-    "lib"
+    "lib",
+    "skills"
   ],
   "scripts": {
-    "test": "node --test test/host.smoke.mjs test/client.render.mjs test/codex-reader.test.mjs test/import-service.test.mjs"
+    "test": "node --test test/host.smoke.mjs test/client.render.mjs test/codex-reader.test.mjs test/import-service.test.mjs test/plugin-skill.test.mjs"
   },
   "bin": {
     "dsh-codex-sync": "bin/dsh-codex-sync.js"
