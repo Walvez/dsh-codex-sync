@@ -21,6 +21,9 @@ Sync skills, prompt instructions, config summaries, session history, and MCP ser
 <p align="center">
   <img src="docs/sync-menu.png" alt="Composer Sync menu: import, MCP status, and live feature toggles" width="720"/>
 </p>
+<p align="center">
+  <img src="docs/import-picker.png" alt="Import picker: Codex projects and chats, updated vs already imported" width="480"/>
+</p>
 
 </div>
 
@@ -30,7 +33,7 @@ Sync skills, prompt instructions, config summaries, session history, and MCP ser
 
 - **✨ Live Skills Bridge**: Registers `~/.codex/skills/*/SKILL.md` as first-class DSH skills — edit a file, the next catalog scan picks it up. No copy, no drift. Full SKILL.md bodies and directory resource bases. Ships a **`codex-sync` skill** so the agent can dry-run imports, toggle settings, and check MCP status for you.
 - **⚡ Live Instructions & Config Injection**: Reads `~/.codex/instructions.md` (or `AGENTS.md`) and `config.toml` dynamically—changes take effect on the next prompt assembly without restart.
-- **💬 Smart Session History Importer**: Imports Codex rollouts into DSH with real tool traces, workspace attach, and sub-agent filtering. Preview with `/import-codex --dry-run` (no writes).
+- **💬 Smart Session History Importer**: **Import now** opens a picker grouped by project — search titles, hide sub-agents, grey-check already imported, re-import chats Codex continued. Also `/import-codex --dry-run`.
 - **🔌 Bidirectional MCP Ecosystem**: 
   - **Codex → DSH**: Auto-mirrors `[mcp_servers.*]` from `config.toml` with live file watching.
   - **DSH → Codex**: Wires `[mcp_servers.dsh-plugins]` so Codex can discover, inspect, and install DSH plugins.

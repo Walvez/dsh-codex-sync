@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { importCodex, listImportCatalog } from '../lib/import-service.js'
@@ -39,7 +39,8 @@ function stubPersistence() {
     persistence: {
       async list() { return [...store.keys()].map((id) => ({ id })) },
       async create(meta) { store.set(meta.id, []) },
-      async append(id, events) { store.set(id, events) },
+      async append(id, events) { store.set(id, [...(store.get(id) ?? []), ...events]) },
+      async inspect(id) { return { meta: { id }, events: store.get(id) ?? [] } },
     },
     ctx: { get: () => undefined }, // no workspaceRegistry → attach step no-ops
   }
@@ -53,7 +54,7 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
 
   const lines = await importCodex(ctx, persistence, {}, root)
   const report = lines.join('\n')
-  assert.match(report, /\[codex\] result: imported 1, skipped 0, empty 0, subagent-skipped 1/)
+  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
@@ -102,7 +103,7 @@ test('import-codex: dryRun lists candidates but writes nothing', async () => {
   const report = lines.join('\n')
   assert.match(report, /\[codex\] dry-run: no sessions will be written/)
   assert.ok(report.includes(`[would-import] ${main}`), 'dry-run lists the main session')
-  assert.match(report, /would-import 1, skipped 0, empty 0, subagent-skipped 1/)
+  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
   assert.equal(store.size, 0, 'dry-run must not create sessions')
 })
 
@@ -114,7 +115,29 @@ test('import-codex: importSubagents: true includes sub-agent threads', async () 
 
   const lines = await importCodex(ctx, persistence, { importSubagents: true }, root)
   const report = lines.join('\n')
-  assert.match(report, /imported 2, .*subagent-skipped 0/)
+  assert.match(report, /imported 2, updated 0, .*subagent-skipped 0/)
   assert.ok(store.has(main))
   assert.ok(store.has(sub))
+})
+
+test('import-codex: re-import appends new Codex turns onto an existing session', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const { persistence, ctx, store } = stubPersistence()
+  await importCodex(ctx, persistence, {}, root)
+  const before = store.get(main).length
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-main.jsonl')
+  appendFileSync(file, [
+    { type: 'response_item', timestamp: '2026-08-17T12:00:00.000Z', payload: { type: 'message', id: 'm-main-2', role: 'user', content: [{ type: 'input_text', text: 'user-main-2' }] } },
+    { type: 'response_item', timestamp: '2026-08-17T12:00:01.000Z', payload: { type: 'message', id: 'm-main-3', role: 'assistant', content: [{ type: 'output_text', text: 'assistant-main-2' }] } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+  const catalog = await listImportCatalog(persistence, {}, root)
+  assert.equal(catalog.projects[0].sessions[0].stale, true)
+
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /updated 1/)
+  assert.ok(store.get(main).length > before)
+  const users = store.get(main).filter((e) => e.type === 'user/message').map((e) => e.data.content.map((b) => b.text).join(''))
+  assert.ok(users.some((t) => t.includes('user-main-2')))
 })

@@ -21,6 +21,9 @@
 <p align="center">
   <img src="docs/sync-menu.zh.png" alt="Composer 同步设置菜单：立即导入、MCP 状态、功能开关" width="720"/>
 </p>
+<p align="center">
+  <img src="docs/import-picker.png" alt="导入对话框：按项目勾选对话，已导入灰勾，有更新可再导" width="480"/>
+</p>
 
 </div>
 
@@ -30,7 +33,7 @@
 
 - **✨ 技能实时挂载**：`~/.codex/skills/*/SKILL.md` 直接注册为 DSH Skills——改文件，下次目录扫描即生效。不用拷贝、不会漂移。插件自带 **`codex-sync` skill**，可用 agent 预演导入、改同步开关、查看 MCP 状态。
 - **⚡ 提示词与配置动态注入**：动态读取 `~/.codex/instructions.md`（或 `AGENTS.md`）与 `config.toml`——改动在下一轮组装提示词时立即生效，无需重启。
-- **💬 智能历史会话导入**：将 Codex 会话导入 DSH，保留真实工具调用输出，自动绑定工作区，默认过滤子代理。先 `/import-codex --dry-run` 预演（不写盘）。
+- **💬 智能历史会话导入**：**立即导入** 弹出按项目分组的选择框——可搜索标题、过滤子代理、已导入灰勾、Codex 续聊过的标「有更新」可再导。也支持 `/import-codex --dry-run`。
 - **🔌 双向 MCP 生态互联**：
   - **Codex → DSH**：自动监听并镜像 `config.toml` 中的 `[mcp_servers.*]`。
   - **DSH → Codex**：自动配置 `[mcp_servers.dsh-plugins]`，让 Codex 具备搜索、检查、安装 DSH 插件能力。
