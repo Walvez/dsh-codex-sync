@@ -1,7 +1,7 @@
 {
   "name": "dsh-codex-sync",
-  "version": "0.7.8",
-  "description": "Bidirectional Codex ⇄ DSH sync: Skills, session import, MCP auto-mirror, reverse MCP installer.",
+  "version": "0.7.9",
+  "description": "One-tap Codex move-in to DSH: auto-import Codex project chats; two-way Skills and MCP sync.",
   "keywords": [
     "dsh",
     "dsh-plugin",
