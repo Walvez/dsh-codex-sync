@@ -24,3 +24,26 @@ jobs:
         run: npm test
       - name: CLI smoke
         run: node bin/dsh-codex-sync.js --help
+
+  # Real DSH host boot: a harness release that breaks the plugin contract
+  # fails here instead of on the user's machine.
+  dsh-boot-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm install -g pnpm
+      - name: pack plugin and add to a scratch web profile
+        run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
+          npm pack --silent
+          pnpm dlx @deepseek-ai/dsh plugin --profile web add "$PWD"/dsh-codex-sync-*.tgz
+          echo "DSH_HOME=$DSH_HOME" >> "$GITHUB_ENV"
+      - name: composed config mentions this plugin
+        run: |
+          pnpm dlx @deepseek-ai/dsh --profile web --dump-config > composed.txt
+          grep -E "dsh-codex-sync|codex-sync" composed.txt

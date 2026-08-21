@@ -59,6 +59,20 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
 })
 
+test('import-codex: dryRun lists candidates but writes nothing', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  makeSession(root, 'sub', { parent_thread_id: 'sess-main', agent_nickname: 'Socrates' })
+  const { persistence, ctx, store } = stubPersistence()
+
+  const lines = await importCodex(ctx, persistence, { dryRun: true }, root)
+  const report = lines.join('\n')
+  assert.match(report, /\[codex\] dry-run: no sessions will be written/)
+  assert.ok(report.includes(`[would-import] ${main}`), 'dry-run lists the main session')
+  assert.match(report, /would-import 1, skipped 0, empty 0, subagent-skipped 1/)
+  assert.equal(store.size, 0, 'dry-run must not create sessions')
+})
+
 test('import-codex: importSubagents: true includes sub-agent threads', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
   const main = makeSession(root, 'main')

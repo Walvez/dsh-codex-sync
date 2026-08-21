@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="dsh-codex-sync: Codex bidirectional sync with DeepSeek Harness">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <text x="80" y="150" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="48" font-weight="700">dsh-codex-sync</text>
+  <text x="80" y="210" fill="#94a3b8" font-family="ui-sans-serif, system-ui, sans-serif" font-size="24">OpenAI Codex ⇄ DeepSeek Harness</text>
+  <text x="80" y="300" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="22">Skills · Instructions · Sessions · MCP mirror</text>
+  <text x="80" y="350" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, sans-serif" font-size="22">Composer Sync ▾ · live toggles · dry-run import</text>
+  <rect x="80" y="430" width="220" height="44" rx="8" fill="#334155" stroke="#64748b"/>
+  <text x="190" y="458" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18">Sync ▾</text>
+  <text x="80" y="560" fill="#64748b" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16">MIT · npm dsh-codex-sync · github.com/Walvez/dsh-codex-sync</text>
+</svg>

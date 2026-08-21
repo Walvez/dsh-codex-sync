@@ -14,8 +14,13 @@
 [![CI](https://github.com/Walvez/dsh-codex-sync/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/Walvez/dsh-codex-sync/actions)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D20.0-339933?style=flat-square&logo=node.js&logoColor=white)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/Walvez/dsh-codex-sync/)
 
 自动将 Codex 的技能、指令提示词、模型配置、会话历史与 MCP 服务器同步进 DSH；一键为 Codex 安装反向 MCP 桥，提供 15+ 个 DSH 插件管理专属工具。
+
+<p align="center">
+  <img src="docs/sync-menu.zh.png" alt="Composer 同步设置菜单：立即导入、MCP 状态、功能开关" width="720"/>
+</p>
 
 </div>
 
@@ -23,9 +28,9 @@
 
 ## 🚀 核心特性
 
-- **✨ 一等公民技能桥接**：直接将 `~/.codex/skills/*/SKILL.md` 挂载为 DSH 原生技能，保留完整的目录资源基址解析支持。
+- **✨ 技能实时挂载**：`~/.codex/skills/*/SKILL.md` 直接注册为 DSH 一等公民技能——改文件，下次目录扫描即生效。不用拷贝、不会漂移；完整 SKILL.md 正文与目录资源基址。
 - **⚡ 提示词与配置动态注入**：动态读取 `~/.codex/instructions.md`（或 `AGENTS.md`）与 `config.toml`——改动在下一轮组装提示词时立即生效，无需重启。
-- **💬 智能历史会话导入**：将 Codex 会话导入 DSH，保留真实工具调用输出，自动绑定工作区目录，并默认过滤子代理线程干扰。
+- **💬 智能历史会话导入**：将 Codex 会话导入 DSH，保留真实工具调用输出，自动绑定工作区，默认过滤子代理。先 `/import-codex --dry-run` 预演（不写盘）。
 - **🔌 双向 MCP 生态互联**：
   - **Codex → DSH**：自动监听并镜像 `config.toml` 中的 `[mcp_servers.*]`。
   - **DSH → Codex**：自动配置 `[mcp_servers.dsh-plugins]`，让 Codex 具备搜索、检查、安装 DSH 插件能力。
@@ -92,8 +97,8 @@ dsh-codex-sync doctor
 
 | 指令 | 参数 | 说明 |
 |---|---|---|
-| `/import-codex` | `[--limit N]` `[--project 子串]` `[--since 时间]` `[--include-subagents]` | 导入 Codex 历史会话 |
-| `/import-all` | *(同上)* | 全来源会话导入 |
+| `/import-codex` | `[--dry-run]` `[--limit N]` `[--project 子串]` `[--since 时间]` `[--include-subagents]` | 导入 Codex 会话（`--dry-run` 只打印 `[would-import]`，不写盘） |
+| `/import-all` | *(同上)* | `/import-codex` 的别名 |
 | `/attach-workspaces` | *无* | 补挂所有导入会话到对应的 CWD 工作区 |
 | `/mcp-status` | *无* | 查看所有 MCP 镜像服务器的实时状态与原因 |
 | `/auto-import` | `[on\|off]` | 切换启动时自动导入（无参数时查询状态） |
@@ -128,9 +133,21 @@ dsh-codex-sync doctor
 npm test
 ```
 
-包含 13 个封闭单元测试用例（覆盖宿主插件生命周期、客户端 React SSR 渲染、rollout 读取解析、子代理过滤以及持久化状态覆盖），无需全局安装 DSH 即可直接运行。
+封闭测试覆盖宿主生命周期、客户端 SSR、rollout 解析、导入 dry-run / 子代理过滤、持久化开关。CI 另有一步用临时 profile 启动 DSH，确认插件能挂上。
 
 欢迎提交补丁，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+---
+
+## 📋 同步范围
+
+完整对照表见 **[docs/compat.md](docs/compat.md)**：技能、指令、MCP、会话与子代理处理。
+
+导入前可预演：
+
+```bash
+/import-codex --dry-run
+```
 
 ---
 

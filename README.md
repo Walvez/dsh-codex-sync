@@ -14,8 +14,13 @@
 [![CI](https://github.com/Walvez/dsh-codex-sync/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/Walvez/dsh-codex-sync/actions)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D20.0-339933?style=flat-square&logo=node.js&logoColor=white)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com/p/Walvez/dsh-codex-sync/)
 
 Sync skills, prompt instructions, config summaries, session history, and MCP servers directly into DSH. Provide Codex with a reverse MCP bridge to manage DSH plugins with 15+ dedicated tools.
+
+<p align="center">
+  <img src="docs/sync-menu.png" alt="Composer Sync menu: import, MCP status, and live feature toggles" width="720"/>
+</p>
 
 </div>
 
@@ -23,9 +28,9 @@ Sync skills, prompt instructions, config summaries, session history, and MCP ser
 
 ## 🚀 Key Capabilities
 
-- **✨ 1st-Class Skills Bridge**: Mounts `~/.codex/skills/*/SKILL.md` directly into DSH's native skill catalog with full directory resource bases.
+- **✨ Live Skills Bridge**: Registers `~/.codex/skills/*/SKILL.md` as first-class DSH skills — edit a file, the next catalog scan picks it up. No copy, no drift. Full SKILL.md bodies and directory resource bases.
 - **⚡ Live Instructions & Config Injection**: Reads `~/.codex/instructions.md` (or `AGENTS.md`) and `config.toml` dynamically—changes take effect on the next prompt assembly without restart.
-- **💬 Smart Session History Importer**: Imports Codex rollouts into DSH with real tool execution traces, automatic workspace folder binding, and automatic sub-agent thread clutter filtering.
+- **💬 Smart Session History Importer**: Imports Codex rollouts into DSH with real tool traces, workspace attach, and sub-agent filtering. Preview with `/import-codex --dry-run` (no writes).
 - **🔌 Bidirectional MCP Ecosystem**: 
   - **Codex → DSH**: Auto-mirrors `[mcp_servers.*]` from `config.toml` with live file watching.
   - **DSH → Codex**: Wires `[mcp_servers.dsh-plugins]` so Codex can discover, inspect, and install DSH plugins.
@@ -92,8 +97,8 @@ Click **Sync ▾** in the composer row to access the control panel. Badges refle
 
 | Command | Arguments | Description |
 |---|---|---|
-| `/import-codex` | `[--limit N]` `[--project str]` `[--since date]` `[--include-subagents]` | Import Codex session history into DSH |
-| `/import-all` | *(Same as above)* | Multi-source session import |
+| `/import-codex` | `[--dry-run]` `[--limit N]` `[--project str]` `[--since date]` `[--include-subagents]` | Import Codex sessions (dry-run prints `[would-import]`, writes nothing) |
+| `/import-all` | *(Same as above)* | Alias of `/import-codex` |
 | `/attach-workspaces` | *None* | Re-attach all imported sessions to matching CWD workspaces |
 | `/mcp-status` | *None* | Display real-time status and reasons for all MCP servers |
 | `/auto-import` | `[on\|off]` | Toggle auto-import on startup (query without args) |
@@ -128,9 +133,22 @@ Click **Sync ▾** in the composer row to access the control panel. Badges refle
 npm test
 ```
 
-The test suite runs 13 hermetic test cases (host lifecycle, client React SSR render, rollout reader, sub-agent filtering, and state persistence) without requiring a global DSH installation.
+The test suite runs hermetic cases (host lifecycle, client SSR, rollout reader, import dry-run / sub-agent filter, state persistence) without a global DSH install. CI also boots a scratch DSH profile to prove the plugin mounts.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a patch.
+
+---
+
+## 📋 What syncs
+
+See **[docs/compat.md](docs/compat.md)** for the full matrix: skills, instructions, MCP, sessions, and sub-agent handling.
+
+Preview an import:
+
+```bash
+# in a DSH session
+/import-codex --dry-run
+```
 
 ---
 
