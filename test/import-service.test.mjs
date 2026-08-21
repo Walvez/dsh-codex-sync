@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { importCodex } from '../lib/import-service.js'
+import { importCodex, listImportCatalog } from '../lib/import-service.js'
 
 // Build a raw response_item event (NOT a string) so the file body below can be
 // JSON.stringify'd exactly once per line.
@@ -57,6 +57,39 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
+})
+
+test('catalog: nests sub-agents under parent and marks imported', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const mainId = makeSession(root, 'main')
+  makeSession(root, 'kid', { parent_thread_id: 'sess-main', agent_nickname: 'Socrates' })
+  const { persistence, store } = stubPersistence()
+  store.set(mainId, [])
+
+  const hidden = await listImportCatalog(persistence, { importSubagents: false }, root)
+  assert.equal(hidden.projects.length, 1)
+  assert.equal(hidden.projects[0].label, 'proj')
+  assert.equal(hidden.projects[0].sessions.length, 1)
+  assert.equal(hidden.projects[0].sessions[0].id, mainId)
+  assert.equal(hidden.projects[0].sessions[0].imported, true)
+  assert.equal(hidden.projects[0].sessions[0].children.length, 0)
+
+  const shown = await listImportCatalog(persistence, { importSubagents: true }, root)
+  const parent = shown.projects[0].sessions[0]
+  assert.equal(parent.children.length, 1)
+  assert.equal(parent.children[0].isSubagent, true)
+  assert.equal(parent.children[0].imported, false)
+  assert.match(parent.children[0].title, /user-kid/)
+})
+
+test('import-codex: ids imports only the listed session', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const other = makeSession(root, 'other')
+  const { persistence, ctx, store } = stubPersistence()
+  await importCodex(ctx, persistence, { ids: [other], importSubagents: true }, root)
+  assert.ok(store.has(other))
+  assert.ok(!store.has(main))
 })
 
 test('import-codex: dryRun lists candidates but writes nothing', async () => {

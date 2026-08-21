@@ -14,10 +14,13 @@ You can drive **dsh-codex-sync** with slash commands. Prefer a **dry-run** befor
 /import-codex --dry-run
 /import-codex
 /import-codex --include-subagents
+/import-codex --ids codex-abc,codex-def
 /import-codex --limit 20 --project my-app --since 2026-08-01
 /import-all
 /attach-workspaces
 ```
+
+The composer **Import now** button opens a picker: projects → chats, sub-agents nested under the parent thread, already-imported rows greyed out. Prefer that UI when the user is in the web app.
 
 - `--dry-run` prints `[would-import]` lines and **writes nothing**.
 - Default import skips Codex **sub-agent** threads (`parent_thread_id`). Add `--include-subagents` only if the user wants those too.

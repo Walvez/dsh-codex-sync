@@ -156,6 +156,7 @@ command = "computer"
     assert.deepEqual(parseInput(' --include-subagents'), { 'include-subagents': true })
     assert.deepEqual(parseInput(' --include-subagents --limit 3'), { 'include-subagents': true, limit: 3 })
     assert.deepEqual(parseInput(' --dry-run'), { 'dry-run': true })
+    assert.deepEqual(parseInput(' --list --ids a,b'), { list: true, ids: 'a,b' })
 
     // mirror: direct instance so the test owns the handle (dispose closes fs.watch)
     mirror = startMcpMirror(ctx, MCP_CONFIG.codexHome, MCP_CONFIG)
