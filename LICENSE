@@ -1,14 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Walvez and dsh-codex-sync contributors
-
-Portions of this project are derived from third-party MIT-licensed works:
-
-  dsh-plugin-codex-bridge — Copyright (c) YYTbit
-  dsh-import-agents     — Copyright (c) Chang-Tong / dongzhangust
-  deepseek-harness-plugin-mcp — Copyright (c) bobleer
-
-See NOTICE for details.
+Copyright (c) 2026 Walvez
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
