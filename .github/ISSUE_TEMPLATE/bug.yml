@@ -1,0 +1,32 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issues: please use [SECURITY.md](https://github.com/Walvez/dsh-codex-sync/blob/main/SECURITY.md), not this form.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Expected vs actual, plus commands (`/import-codex`, `dsh-codex-sync doctor`, Sync menu, …)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: `npm` version or git SHA (e.g. 0.7.4)
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: |
+        - Node:
+        - dsh profile:
+        - OS:
+    validations:
+      required: false

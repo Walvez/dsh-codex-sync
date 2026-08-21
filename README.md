@@ -130,6 +130,14 @@ npm test
 
 The test suite runs 13 hermetic test cases (host lifecycle, client React SSR render, rollout reader, sub-agent filtering, and state persistence) without requiring a global DSH installation.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a patch.
+
+---
+
+## 🔒 Security
+
+Please report vulnerabilities privately — see [SECURITY.md](SECURITY.md). Do not file public issues for security reports.
+
 ---
 
 ## 📜 License

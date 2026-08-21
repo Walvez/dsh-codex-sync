@@ -130,6 +130,14 @@ npm test
 
 包含 13 个封闭单元测试用例（覆盖宿主插件生命周期、客户端 React SSR 渲染、rollout 读取解析、子代理过滤以及持久化状态覆盖），无需全局安装 DSH 即可直接运行。
 
+欢迎提交补丁，流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+---
+
+## 🔒 安全
+
+请通过 [SECURITY.md](SECURITY.md) **私下**报告漏洞，不要开公开 Issue。
+
 ---
 
 ## 📜 开源协议
