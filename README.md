@@ -2,7 +2,7 @@
 
 # ⚡ dsh-codex-sync
 
-**The ultimate bridge between OpenAI Codex and DeepSeek Harness (DSH)**<br/>
+**The ultimate 2-way bridge between OpenAI Codex and DSH: bidirectional chat sync, live Skills mount & auto MCP mirroring.**<br/>
 *2-way project chat sync · Live Skills mount · Auto MCP mirroring · Native modern UI*
 
 <p align="center">

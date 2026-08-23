@@ -2,7 +2,7 @@
 
 # ⚡ dsh-codex-sync
 
-**OpenAI Codex 与 DeepSeek Harness (DSH) 终极双向同步桥梁**<br/>
+**OpenAI Codex 与 DSH 终极双向同步桥：项目对话双向互导续聊，Skills 实时挂载、MCP 自动双向镜像。**<br/>
 *项目会话双向流转 · 技能实时挂载 · MCP 自动镜像 · 原生现代化交互*
 
 <p align="center">
