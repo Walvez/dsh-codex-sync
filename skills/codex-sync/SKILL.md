@@ -20,13 +20,28 @@ You can drive **dsh-codex-sync** with slash commands. Prefer a **dry-run** befor
 /attach-workspaces
 ```
 
-The composer **Import now** button opens a picker: projects → chats, sub-agents nested under the parent thread, already-imported rows greyed out. Prefer that UI when the user is in the web app.
+The composer **Import from Codex** button opens a picker: projects → chats, sub-agents nested under the parent thread, already-imported rows greyed out. Prefer that UI when the user is in the web app.
 
 - `--dry-run` prints `[would-import]` lines and **writes nothing**.
 - Default import skips Codex **sub-agent** threads (`parent_thread_id`). Add `--include-subagents` only if the user wants those too.
 - Already-imported ids are skipped (idempotent). Huge rollouts above `maxSessionBytes` are skipped.
 
-Composer **Sync ▾** → **Import now** is the same as `/import-all`.
+Composer **Sync ▾** → **Import from Codex** opens the picker. After a successful import the page reloads in ~2.5s so new chats appear.
+
+## Export DSH chats to Codex
+
+Writes **new** Codex rollouts (new uuid, text only — not a resume of the original thread; every export creates a new copy and never overwrites original):
+
+```text
+/export-codex --dry-run
+/export-codex --ids sess-1,sess-2
+```
+
+Composer **Sync ▾** → **Export to Codex** opens the picker over DSH sessions:
+- **Filters**: "From Codex" (`showCodex`, default off) and "Hide sub-agents" (`hideSub`, default on) filter toggles.
+- **Codex-origin sessions**: Only DSH-updated chats (`dshUpdated=true`, tagged "Updated in DSH" / "DSH 已续聊") are selectable. Unchanged or source-missing chats remain locked.
+- **Sub-agents**: Hidden by default and nested under parent sessions for organization. Selecting a child sub-agent exports it as a separate independent thread (not merged with parent).
+- **Export copies**: Exporting creates brand-new Codex rollouts and thread entries; original Codex conversations are never overwritten.
 
 ## Settings (persisted in `~/.dsh/codex-sync.json`)
 

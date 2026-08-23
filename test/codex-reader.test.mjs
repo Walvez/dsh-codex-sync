@@ -140,6 +140,21 @@ test('new schema: oversized tool output is capped with a truncation note', () =>
   assert.match(text, /…\[截断：源输出 9000 字符\]/)
 })
 
+test('new schema: reasoning summary_text arrays flatten to a string', () => {
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: 'hi' }]),
+    reason('T2', [{ type: 'summary_text', text: 'think step one' }]),
+    msg('T3', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: 'ok' }]),
+  ]
+  const file = nextFile('reason-arr'); write(file, rolloutOf(events))
+  const { messages } = parseCodexSession(file)
+  const reasoning = messages[1].blocks.filter((b) => b.type === 'reasoning')
+  assert.equal(reasoning[0].text, 'think step one')
+  const events2 = buildDshEvents(messages, { toolEvents: true })
+  const asst = events2.find((e) => e.type === 'assistant/message' && e.data.message.content[0].type === 'reasoning')
+  assert.equal(typeof asst.data.message.content[0].text, 'string')
+})
+
 test('new schema: reasoning summaries merge into the pending assistant message', () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '1+1?' }]),

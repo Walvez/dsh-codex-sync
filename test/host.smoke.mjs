@@ -106,6 +106,10 @@ command = "computer"
       constructor(c) { super(c, 'commands', true) }
       register(def) { this.registered = this.registered ?? []; this.registered.push(def); return () => {} }
     }
+    class StubWebServer extends Service {
+      constructor(c) { super(c, 'webServer', true) }
+      register(def) { this.registration = def; return () => {} }
+    }
     const ctx = new Context()
     const mounted = []
     const origPlugin = ctx.plugin.bind(ctx)
@@ -115,12 +119,13 @@ command = "computer"
     }
     await ctx.plugin(StubSystemPrompt)
     await ctx.plugin(StubCommands)
+    await ctx.plugin(StubWebServer)
     const MCP_CONFIG = { codexHome, maxSkills: 30, mcpMirrorDeny: ['node_repl'], mcpMirrorSilent: ['exa'] }
     await ctx.plugin(plugin, { ...MCP_CONFIG, mcpMirror: false }) // mirror tested separately below
     await new Promise((r) => setTimeout(r, 100))
 
     const names = ctx.commands.registered.map((d) => d.name)
-    assert.deepEqual(names, ['import-codex', 'import-all', 'attach-workspaces', 'codex-settings', 'codex-setting', 'mcp-status', 'auto-import'])
+    assert.deepEqual(names, ['import-codex', 'import-all', 'export-codex', 'attach-workspaces', 'codex-settings', 'codex-setting', 'mcp-status', 'auto-import'])
 
     const byName = Object.fromEntries(ctx.commands.registered.map((d) => [d.name, d]))
     const invocation = (rawInput = '') => Object.freeze({ commandId: 'x', agent: {}, rawInput, signal: null })
@@ -185,6 +190,42 @@ command = "computer"
     assert.match(disabled, /未启用/)
     // /mcp-status also reports the authoritative autoImport value
     assert.match(disabled, /autoImport: off/)
+
+    // HTTP server endpoints: /settings, /setting, /mcp-status
+    const { Readable } = await import('node:stream')
+    const callHttp = async (method, path, body = null) => {
+      const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : [])
+      req.method = method
+      req.url = path
+      let out = ''
+      const headers = {}
+      const res = {
+        statusCode: 200,
+        setHeader(k, v) { headers[k] = v },
+        end(chunk) { if (chunk) out += chunk },
+      }
+      await ctx.webServer.registration.handler(req, res)
+      return { status: res.statusCode, headers, data: JSON.parse(out || '{}') }
+    }
+
+    // GET /settings
+    const getSettings = await callHttp('GET', '/dsh-codex-sync/settings')
+    assert.equal(getSettings.status, 200)
+    assert.equal(typeof getSettings.data.settings, 'object')
+    assert.equal(getSettings.data.settings.enableImport, true)
+
+    // POST /setting
+    const postSetting = await callHttp('POST', '/dsh-codex-sync/setting', { key: 'enableSkills', value: false })
+    assert.equal(postSetting.status, 200)
+    assert.deepEqual(postSetting.data, { ok: true, key: 'enableSkills', value: false })
+    const getSettingsAfter = await callHttp('GET', '/dsh-codex-sync/settings')
+    assert.equal(getSettingsAfter.data.settings.enableSkills, false)
+
+    // GET /mcp-status
+    const getMcpStatus = await callHttp('GET', '/dsh-codex-sync/mcp-status')
+    assert.equal(getMcpStatus.status, 200)
+    assert.match(getMcpStatus.data.text, /MCP 镜像未启用/)
+    assert.equal(typeof getMcpStatus.data.autoImport, 'boolean')
   } finally {
     // closing the mirror's fs.watch lets the event loop drain (no runner hang)
     try { mirror?.dispose?.() } catch { /* ignore */ }
