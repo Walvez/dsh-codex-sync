@@ -26,3 +26,12 @@ Prints `[would-import]` lines and the same counters as a real run. **No sessions
 /import-codex --include-subagents
 /import-codex --limit 20 --project my-app --since 2026-08-01
 ```
+
+## DSH → Codex Export
+
+DSH sessions can be exported back to Codex as rollout JSONL files and indexed in `state_5.sqlite`:
+
+- **Source filter toggle**: "From Codex" (`showCodex`, default off) allows showing chats that originated from Codex alongside native DSH sessions.
+- **Selectable rules**: Only DSH-updated Codex-origin chats (`dshUpdated=true`, tagged "Updated in DSH" / "DSH 已续聊") are selectable. Unchanged or source-missing Codex chats remain grayed out and locked. Native DSH sessions are selectable.
+- **Independent copy**: Every export creates a brand-new Codex rollout (new uuid) and thread entry. It never overwrites the original Codex thread.
+- **Sub-agents**: Hidden by default (`hideSub`, default on) and nested under their parent sessions for organization. Selecting a child sub-agent exports it as a separate standalone Codex thread (no merge with parent).

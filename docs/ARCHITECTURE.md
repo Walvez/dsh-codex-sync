@@ -142,7 +142,7 @@ Two sources (lib/mcp.js):
 Registers into the composer tool row slot `conversation.input.left`
 (via `ctx.slots.inject(name, () => ctx.slots.register({…}, Component))`).
 `inject: ['slots', 'remote', 'remote.commands']`. Renders a **Sync settings
-dropdown** (`同步设置 ▾/▴`): the chevron toggles a menu with 立即导入
+dropdown** (`同步设置 ▾/▴`): the chevron toggles a menu with 从 Codex 导入
 (`/import-all`), 自动导入 badge toggle (`/auto-import on|off`) and
 查看镜像状态 (`/mcp-status`). **Opening the menu runs no command and adds no
 conversation card** — the badge mirrors the last toggle in localStorage

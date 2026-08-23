@@ -1,7 +1,7 @@
 {
   "name": "dsh-codex-sync",
-  "version": "0.9.5",
-  "description": "One-tap Codex move-in to DSH: auto-import Codex project chats; two-way Skills and MCP sync.",
+  "version": "1.3.0",
+  "description": "The ultimate bridge between OpenAI Codex and DeepSeek Harness (DSH): 2-way project chat sync, live first-class Skills mount, auto MCP mirroring, and native modern UI.",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -11,7 +11,11 @@
     "mcp",
     "skills",
     "sync",
-    "import"
+    "import",
+    "export",
+    "migration",
+    "chat-sync",
+    "subagents"
   ],
   "license": "MIT",
   "type": "module",
@@ -44,7 +48,7 @@
     "skills"
   ],
   "scripts": {
-    "test": "node --test test/host.smoke.mjs test/client.render.mjs test/codex-reader.test.mjs test/import-service.test.mjs test/plugin-skill.test.mjs"
+    "test": "node --test test/host.smoke.mjs test/client.render.mjs test/codex-reader.test.mjs test/import-service.test.mjs test/plugin-skill.test.mjs test/export-codex.test.mjs"
   },
   "bin": {
     "dsh-codex-sync": "bin/dsh-codex-sync.js"
@@ -56,7 +60,7 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-slots"
       ],
       "platform": "web"

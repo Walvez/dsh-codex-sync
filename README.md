@@ -2,7 +2,8 @@
 
 # ⚡ dsh-codex-sync
 
-**One-tap Codex move-in to DSH: auto-import project chats, two-way Skills & MCP sync.**
+**The ultimate bridge between OpenAI Codex and DeepSeek Harness (DSH)**<br/>
+*2-way project chat sync · Live Skills mount · Auto MCP mirroring · Native modern UI*
 
 <p align="center">
   <a href="README.md"><b>English</b></a> •
@@ -20,13 +21,23 @@
 
 <table>
   <tr>
-    <td align="center" width="55%">
-      <b>🎛️ In-Composer Sync Panel</b><br/>
-      <img src="docs/sync-menu.png" alt="Composer Sync menu: import, MCP status, and live feature toggles" width="100%"/>
+    <td align="center" width="50%">
+      <b>🎛️ Native Sync Settings Modal</b><br/>
+      <img src="docs/sync-settings-modal.png" alt="Codex Sync Settings modal: actions, switches, language" width="100%"/>
     </td>
-    <td align="center" width="45%">
-      <b>💬 Smart Import Picker</b><br/>
-      <img src="docs/import-picker.png" alt="Import picker: Codex projects and chats, updated vs already imported" width="100%"/>
+    <td align="center" width="50%">
+      <b>📍 Sidebar Workspace Trigger</b><br/>
+      <img src="docs/sidebar-entry.png" alt="Workspace header Codex quick entry button" width="100%"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <b>📥 Import from Codex by Project</b><br/>
+      <img src="docs/import-picker.png" alt="Import picker: projects, chats, and status tags" width="100%"/>
+    </td>
+    <td align="center" width="50%">
+      <b>📤 Export DSH Chats to Codex</b><br/>
+      <img src="docs/export-picker.png" alt="Export picker: smart workspace matching, source filter" width="100%"/>
     </td>
   </tr>
 </table>
@@ -35,28 +46,65 @@
 
 ---
 
-## 🚀 Key Capabilities
+## 🤔 Why dsh-codex-sync?
 
-- **✨ Live Skills Bridge**: Registers `~/.codex/skills/*/SKILL.md` directly into DSH's native skill catalog. Edit a file, and the next scan picks it up instantly—no copy, no drift.
-- **🤖 Bundled `codex-sync` Agent Skill**: Ships an out-of-the-box skill so your DSH agent can dry-run imports, toggle sync features, and inspect MCP status autonomously.
-- **💬 Smart Session History Importer**: Click **Import now** to open an interactive dialog grouped by project with instant search, sub-agent nesting, and re-import support for continued threads.
-- **🔌 Full MCP Auto-Mirroring**:
-  - **Codex → DSH**: Dynamically mirrors `[mcp_servers.*]` from `config.toml` with live file watching.
-  - **DSH → Codex**: Wires `[mcp_servers.dsh-plugins]` so Codex can discover, inspect, and install DSH plugins via reverse MCP.
-- **🌓 Native Dark & Light Theme**: Seamlessly adapts to DSH design tokens (`--dsw-alias-*`) with crisp vector icons, smooth toggles, and hover tooltips (ⓘ).
+When using OpenAI Codex, developers build up significant workflow assets:
+1. **Rich project chat histories** with complete code contexts, architecture decisions, and debugging steps;
+2. **Custom Skills libraries** under `~/.codex/skills` with tailored instructions and scripts;
+3. **Configured MCP toolchains** for databases, web searches, and browser automation.
+
+When adopting or exploring **DeepSeek Harness (DSH)**, developers typically face major friction:
+- **Lost conversation history**: Incompatible session formats prevent resuming past Codex tasks in DSH;
+- **Configuration duplication and drift**: Skills and MCP servers must be manually recreated and maintained in two separate tools;
+- **One-way dead ends**: Most migration scripts are one-time destructive copies that offer no clean way to safely bring DSH continuations back to Codex.
+
+**`dsh-codex-sync` eliminates this friction completely.** It is not a throwaway migrator, but a production-grade, continuous two-way bridge between Codex and DSH.
+
+---
+
+## ✨ Key Highlights
+
+### 1. 💬 Two-Way Safe Project Chat Portability (Codex ⇄ DSH)
+- **Import from Codex**:
+  - Browse conversations grouped by workspace folder in an intuitive project tree;
+  - Preserves user prompts, assistant outputs, reasoning traces, and tool-call trajectories;
+  - Automatically attaches imported sessions to matching workspaces for **seamless continuation**;
+  - Incremental re-import: Codex conversations continued after the initial import are marked as `updated` and append only new turns without creating duplicate sessions.
+- **Export to Codex**:
+  - Export DSH native conversations or continuations back into Codex;
+  - Automatically matches Codex's workspace catalog, gracefully locking unknown directories to prevent orphan threads;
+  - Creates clean, standalone Codex rollouts (`history_mode: legacy`) and SQLite index entries **without modifying or overwriting original Codex histories**;
+  - View and continue chats in Codex immediately after restarting the Codex app.
+- **Sub-Agent Thread Filtering**:
+  - Hides internal sub-agent threads by default to keep the conversation list focused;
+  - Easily expand and nest sub-agents under parent threads for selective, independent export.
+
+### 2. ⚡ Live First-Class Skills Mounting
+- Mounts `~/.codex/skills/*/SKILL.md` directly into DSH's native skill catalog;
+- Full support for nested directory resources and multi-file skill bundles;
+- **Zero-restart updates**: Edit a skill file on disk, and DSH recognizes the change on the next turn.
+
+### 3. 🔌 Automated Bidirectional MCP Mirroring
+- **Codex → DSH**: Watches `~/.codex/config.toml` live, dynamically mirroring `[mcp_servers.*]` to DSH with conflict avoidance and stderr silencing;
+- **DSH → Codex (Reverse Bridge)**: Single-command setup (`npx dsh-codex-sync codex-install`) equips your Codex agent with tools to search, inspect, and install DSH plugins.
+
+### 4. 🎨 Native Modern UI Experience
+- **Adaptive Sidebar Trigger**: Sits right beside the workspace header when expanded, and aligns below the search button when collapsed;
+- **Centered Modal Panel**: High-contrast, backdrop-blurred settings card with intuitive action cards, real-time switch feedback, and zero UI cutoff;
+- **Polished Design Integration**: Uses native DSH design tokens (`--dsw-alias-*`), pure CSS transitions with zero hover artifacts, and responsive text truncation.
 
 ---
 
 ## 📦 Quick Start
 
-### 1. DSH Setup
+### 1. Install in DSH
 
 Install via DSH Plugin Market (recommended):
 ```bash
 dsh plugin --profile web add dsh-codex-sync
 ```
 
-Or mount via `cordis.patch.yml`:
+Or configure inside your profile's `cordis.patch.yml`:
 ```yaml
 - insert:
     - id: codex-sync
@@ -69,89 +117,48 @@ Or mount via `cordis.patch.yml`:
           - exa
 ```
 
-### 2. Codex Setup (Reverse MCP Bridge)
+### 2. Configure Codex Reverse MCP Bridge (Optional)
 
 ```bash
-# Configure [mcp_servers.dsh-plugins] into ~/.codex/config.toml
+# Register [mcp_servers.dsh-plugins] in ~/.codex/config.toml
 npx dsh-codex-sync codex-install
 
-# Check synchronization health
+# Run diagnostic health check
 dsh-codex-sync doctor
 ```
 
 ---
 
-## 🎛️ In-Composer GUI Settings
+## 🎛️ Sync Settings & Toggles
 
-Click **Sync ▾** in the composer tool row to access the control panel. Switches reflect live state and persist across sessions.
+Click the **Codex Icon** in the sidebar to open the centered control modal:
 
-| Group | Item | Action / Key | Description |
+| Section | Item | Command / Config Key | Description |
 |---|---|---|---|
-| **Actions** | Import now | `/import-all` | Open project picker & import chats |
-| | Mirror status | `/mcp-status` | Display per-server mirror health & reasons |
-| | Refresh states | `/codex-settings` | Re-read all switch states from host |
-| **Features** | Import commands | `enableImport` | Enable `/import-codex` command family |
-| | Auto import | `autoImport` | Import new sessions automatically on startup |
+| **Actions** | Import from Codex | `/import-all` | Open project picker to import chats into DSH |
+| | Export to Codex | `/export-codex` | Export DSH chats into new Codex conversation copies |
+| | Mirror status | `/mcp-status` | Modal overview of MCP servers, health, and statuses |
+| | Refresh states | `/codex-settings` | Re-sync all switch states from the host |
+| **Features** | Import commands | `enableImport` | Enable `/import-codex` slash command family |
+| | Auto import | `autoImport` | Automatically import new Codex chats on startup |
 | | Instructions | `enableInstructions` | Inject `instructions.md` / `AGENTS.md` into prompt |
-| | Config summary | `enableConfig` | Inject `config.toml` model summary into prompt |
+| | Config summary | `enableConfig` | Inject `config.toml` model settings summary into prompt |
 | | Skills | `enableSkills` | Register `~/.codex/skills` as live DSH skills |
-| | MCP mirror | `mcpMirror` | Auto-mirror `[mcp_servers.*]` to DSH |
-| **Language** | English ⇄ 中文 | `Language` | Switch GUI language (persisted in localStorage) |
-
-> 💡 *Hover over the **ⓘ** icon next to any item to view its detailed explainer.*
+| | MCP mirror | `mcpMirror` | Auto-mirror `[mcp_servers.*]` (applies immediately) |
+| **Language** | Language Switcher | `Language` | Toggle between 简体中文 / English |
 
 ---
 
-## ⚡ Slash Commands
+## 🤖 Built-in Agent Skill (`codex-sync`)
 
-| Command | Arguments | Description |
-|---|---|---|
-| `/import-codex` | `[--dry-run]` `[--ids a,b]` `[--limit N]` `[--project str]` `[--since date]` `[--include-subagents]` | Import Codex sessions (dry-run prints `[would-import]`, writes nothing) |
-| `/import-all` | *(Same as above)* | Alias of `/import-codex` |
-| `/attach-workspaces` | *None* | Re-attach all imported sessions to matching CWD workspaces |
-| `/mcp-status` | *None* | Display real-time status and reasons for all MCP servers |
-| `/auto-import` | `[on\|off]` | Toggle auto-import on startup (query without args) |
-| `/codex-settings` | *None* | Print all feature switches and effective states |
-| `/codex-setting` | `<key> [on\|off]` | Toggle specific sync features via command line |
+This package bundles a first-class `codex-sync` skill. Your DSH AI Agent can operate synchronization tasks on your behalf:
+
+- *"Dry-run importing my Codex conversations"* → runs `/import-codex --dry-run`
+- *"Check current MCP mirror status"* → runs `/mcp-status`
+- *"Turn on auto-import"* → runs `/auto-import on`
 
 ---
 
-## ⚙️ Configuration Reference
+## 📄 License
 
-| Option | Default | Description |
-|---|---|---|
-| `codexHome` | `~/.codex` | Codex configuration directory |
-| `enableSkills` | `true` | Register Codex skills as first-class DSH skills |
-| `enableInstructions` | `true` | Inject `instructions.md` / `AGENTS.md` into prompt |
-| `enableConfig` | `true` | Inject `config.toml` model summary into prompt |
-| `enableImport` | `true` | Register `/import-codex` command family |
-| `maxSkills` | `100` | Max number of skills to scan and register |
-| `maxSessionBytes` | `268435456` *(256MB)* | Skip rollouts larger than this limit to prevent V8 string crashes |
-| `importSubagents` | `false` | When `true`, imports sub-agent rollout threads (`parent_thread_id`) |
-| `mcpMirror` | `true` | Auto-mirror `[mcp_servers.*]` from `config.toml` |
-| `mcpMirrorDeny` | `[]` | Blacklist of server names never to mirror (`dsh-plugins` excluded) |
-| `mcpMirrorOnly` | *None* | Whitelist: if set, mirrors **only** these specified server names |
-| `mcpMirrorSilent` | `[]` | Stdio servers started with `2>/dev/null` to silence chatty stderr logs |
-| `autoImport` | `false` | Run incremental import automatically on startup session |
-
----
-
-## 📋 Compatibility Matrix
-
-See **[docs/compat.md](docs/compat.md)** for details on skills, instructions, MCP, sessions, and delta updates.
-
----
-
-## 🧪 Testing
-
-```bash
-npm test
-```
-
-Hermetic test suite covers host lifecycle, client SSR, rollout parsing, delta updates, sub-agent filtering, and state persistence without requiring global DSH installation.
-
----
-
-## 📜 License
-
-[MIT License](LICENSE) © 2026 Walvez.
+[MIT License](LICENSE) © 2026 Walvez
