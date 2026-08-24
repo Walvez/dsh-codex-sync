@@ -47,26 +47,98 @@ test('client bundle: loads, applies, renders SyncMenu without throwing', async (
   let capturedComponent
   let capturedDef
   const slots = {
-    inject(name, cb) { assert.equal(name, 'sidebar.footer.action'); cb() },
+    inject(name, cb) { assert.equal(name, 'shell.overlay'); cb() },
     register(def, component) { capturedDef = def; capturedComponent = component },
   }
   plugin.apply({
     slots,
   })
   assert.ok(capturedComponent, 'register must be called with a component')
-  assert.equal(capturedDef.name, 'sidebar.footer.action')
+  assert.equal(capturedDef.name, 'shell.overlay')
   assert.equal(capturedDef.id, 'codex-sync')
 
   // SSR render the closed state: must produce the button without touching
   // document/window layout APIs (effects don't run in SSR)
   const React = require(join(reactDir, 'index.js'))
   const { renderToStaticMarkup } = require(join(reactDomDir, 'server.js'))
-  const html = renderToStaticMarkup(React.createElement(capturedComponent, { wide: true }))
+  // shell.overlay passes no props at mount
+  const html = renderToStaticMarkup(React.createElement(capturedComponent))
   assert.match(html, /Sync|同步设置/, 'button title must render')
   assert.match(html, /M8\.086\.457/, 'Codex SVG path must render')
+  assert.match(html, /data-codex-sync-trigger/, 'trigger attribute must be present')
+  assert.match(html, /data-mode="rail"/, 'data-mode attribute must default to rail when unpositioned')
+  assert.match(html, /display:\s*none/, 'initial position must be hidden in SSR to prevent fixed 0,0 frame flash')
   // closed menu must not render its items (the badge lives inside it;
   // settings sync happens in a client effect, which SSR does not run)
   assert.doesNotMatch(html, /从 Codex 导入/, 'modal must stay closed in the idle render')
+})
+
+test('client bundle: overlay registration, data attributes, maid-atelier styling, and stable DOM detection', () => {
+  const source = readFileSync(join(PROJECT, 'lib', 'client.js'), 'utf8')
+
+  // Official additive shell.overlay slot registration
+  assert.match(source, /ctx\.slots\.inject\(['"]shell\.overlay['"]/)
+  assert.match(source, /name:\s*['"]shell\.overlay['"]/)
+  assert.match(source, /id:\s*['"]codex-sync['"]/)
+  assert.doesNotMatch(source, /sidebar\.footer\.action/)
+
+  // Trigger attributes
+  assert.match(source, /data-codex-sync-trigger/)
+  assert.match(source, /data-mode/)
+
+  // Stable DOM evidence and getBoundingClientRect
+  assert.match(source, /data-sidebar-collapsed/)
+  assert.match(source, /searchButton/)
+  assert.match(source, /sectionHeader/)
+  assert.match(source, /getBoundingClientRect/)
+
+  // Expanded mode appends one normal 28px flex child to the live sectionHeader.
+  assert.match(source, /ReactDOM\.createPortal\(triggerButton,\s*placement\.sectionHeader/)
+  assert.match(source, /position:\s*'relative'/)
+  assert.match(source, /width:\s*'28px'/)
+  assert.match(source, /height:\s*'28px'/)
+  assert.doesNotMatch(source, /searchSlot/, 'native search must not be a wide positioning target')
+
+  // Collapsed mode is fixed at the final centered position in the 56px rail.
+  assert.match(source, /const\s+RAIL_WIDTH\s*=\s*56/)
+  assert.match(source, /position:\s*'fixed'/)
+  assert.match(source, /left:\s*railLeft\s*\+\s*\(RAIL_WIDTH\s*-\s*size\)\s*\/\s*2/)
+  assert.match(source, /top:\s*searchRect\.bottom\s*\+/)
+  assert.doesNotMatch(source, /searchRect\.left/, 'collapsed left must never follow transitional search x coordinates')
+
+  // Rail entry has a dedicated opacity-only keyframe; layout and transforms never animate.
+  assert.doesNotMatch(source, /transition:\s*all/)
+  assert.match(source, /transition:\s*background-color[^\n]*color[^\n]*border-color[^\n]*box-shadow/)
+  assert.match(source, /animation:\s*codex-sync-rail-fade-in\s+160ms/)
+  const railKeyframes = source.slice(
+    source.indexOf('@keyframes codex-sync-rail-fade-in'),
+    source.indexOf('.codex-sync-trigger-rail:hover')
+  )
+  assert.match(railKeyframes, /from\s*\{\s*opacity:\s*0/)
+  assert.match(railKeyframes, /to\s*\{\s*opacity:\s*1/)
+  assert.doesNotMatch(railKeyframes, /\b(?:transform|left|top|width|height)\s*:/)
+
+  // Wide and rail modes use distinct React keys so rail entry remounts and restarts the fade.
+  assert.match(source, /key:\s*isWide\s*\?\s*'codex-sync-wide-trigger'\s*:\s*'codex-sync-rail-trigger'/)
+
+  // Scoped collapsed rail detection without global [class*=root][class*=rail]
+  assert.doesNotMatch(source, /\[class\*="root"\]\[class\*="rail"\]/)
+  assert.match(source, /findRailSearchButton/)
+
+  // Placement is locked once per collapse; no polling or transition-driven resize/scroll tracking.
+  assert.match(source, /lockedRailPlacement/)
+  assert.match(source, /startedCollapse/)
+  assert.doesNotMatch(source, /setInterval\(/)
+  assert.doesNotMatch(source, /ResizeObserver/)
+  assert.doesNotMatch(source, /addEventListener\(['"]scroll['"]/)
+
+  // Maid-atelier gold and hover styling matching native workspace icon buttons
+  assert.match(source, /body\[data-dsh-maid-atelier\]/)
+  assert.match(source, /#dfbf7c/)
+  assert.match(source, /#fff1ce/)
+  assert.match(source, /38px/)
+  assert.match(source, /rgba\(225,\s*191,\s*124,\s*0?\.68\)/)
+  assert.match(source, /rgba\(87,\s*117,\s*190,\s*0?\.28\)/)
 })
 
 test('client bundle: contains modal structure, tag layout, and picker settings', () => {
