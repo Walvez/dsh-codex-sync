@@ -2,7 +2,7 @@
 
 # ⚡ dsh-codex-sync
 
-**OpenAI Codex 与 DSH 终极双向同步桥：项目对话双向互导续聊，Skills 实时挂载、MCP 自动双向镜像。**<br/>
+**Codex 与 DSH 双向桥接：挂载 `~/.codex/skills`、带工作区绑定的会话导入、`mcp_servers` 实时镜像，以及 Codex 端反向 MCP 安装器。**<br/>
 *项目会话双向流转 · 技能实时挂载 · MCP 自动镜像 · 原生现代化交互*
 
 <p align="center">
