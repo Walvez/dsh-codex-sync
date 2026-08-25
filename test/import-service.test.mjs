@@ -34,13 +34,15 @@ function makeSession(root, name, metaExtra = {}) {
 
 function stubPersistence() {
   const store = new Map()
+  const metas = new Map()
   return {
     store,
+    metas,
     persistence: {
       async list() { return [...store.keys()].map((id) => ({ id })) },
-      async create(meta) { store.set(meta.id, []) },
+      async create(meta) { metas.set(meta.id, meta); store.set(meta.id, []) },
       async append(id, events) { store.set(id, [...(store.get(id) ?? []), ...events]) },
-      async inspect(id) { return { meta: { id }, events: store.get(id) ?? [] } },
+      async inspect(id) { return { meta: metas.get(id) ?? { id }, events: store.get(id) ?? [] } },
     },
     ctx: { get: () => undefined }, // no workspaceRegistry → attach step no-ops
   }
@@ -50,13 +52,14 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
   const main = makeSession(root, 'main')
   const sub = makeSession(root, 'sub', { parent_thread_id: 'sess-main', agent_nickname: 'Socrates' })
-  const { persistence, ctx, store } = stubPersistence()
+  const { persistence, ctx, store, metas } = stubPersistence()
 
   const lines = await importCodex(ctx, persistence, {}, root)
   const report = lines.join('\n')
   assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
+  assert.equal(metas.get(main)?.agentPreset, 'cordis', 'imported sessions resume under the working cordis preset')
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
 })
 

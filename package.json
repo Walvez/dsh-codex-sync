@@ -1,6 +1,6 @@
 {
   "name": "dsh-codex-sync",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "description": "Two-way Codex↔DSH bridge: skills from ~/.codex/skills, session import with workspace attach, live MCP mirroring of mcp_servers, and a Codex-side reverse MCP installer.",
   "keywords": [
     "dsh",
