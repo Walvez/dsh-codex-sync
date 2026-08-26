@@ -137,6 +137,7 @@ Click the **Codex Icon** in the sidebar to open the centered control modal:
 |---|---|---|---|
 | **Actions** | Import from Codex | `/import-all` | Open project picker to import chats into DSH |
 | | Export to Codex | `/export-codex` | Export DSH chats into new Codex conversation copies |
+| | Repair sessions¹ | `/repair-sessions [--fix]` | Scan stored session logs for replay damage and heal them in place (see below) |
 | | Mirror status | `/mcp-status` | Modal overview of MCP servers, health, and statuses |
 | | Refresh states | `/codex-settings` | Re-sync all switch states from the host |
 | **Features** | Import commands | `enableImport` | Enable `/import-codex` slash command family |
@@ -146,6 +147,29 @@ Click the **Codex Icon** in the sidebar to open the centered control modal:
 | | Skills | `enableSkills` | Register `~/.codex/skills` as live DSH skills |
 | | MCP mirror | `mcpMirror` | Auto-mirror `[mcp_servers.*]` (applies immediately) |
 | **Language** | Language Switcher | `Language` | Toggle between 简体中文 / English |
+
+> ¹ A subtle hint at the bottom-left of the settings modal links imported-chat errors to this command.
+
+---
+
+## 🩺 Troubleshooting: `token meter` / replay errors on imported chats
+
+**Symptom** — switching the model or running compaction on an (imported) conversation fails with:
+
+```
+command.execute failed: internal: token meter: assistant/message at seq N has no matching step/start event
+corrupt session log: seq gap in committed region at line L
+```
+
+**Why** — DSH's token meter validates the whole event log via cold replay when the model changes (provider usage anchors become invalid). Logs written before v1.6.0 lacked paired `step/start…step/end` markers, and mixed logs can carry stale seq citations — both fail loud only during that replay.
+
+**Fix** — run this in any DSH chat (or `dsh-codex-sync repair-sessions --fix` in a terminal):
+
+```
+/repair-sessions --fix
+```
+
+The repair merges seams, inserts missing step markers, remaps citations, renumbers sequences, validates every candidate with the real `@deepseek-ai/dsh-token-meter`, and keeps a `.bak` next to each repaired log. Imports created by **v1.6.0+** are replay-safe by construction, so this should never trigger again.
 
 ---
 

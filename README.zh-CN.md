@@ -137,6 +137,7 @@ dsh-codex-sync doctor
 |---|---|---|---|
 | **操作** | 从 Codex 导入 | `/import-all` | 打开项目选择对话框，按项目勾选导入历史对话 |
 | | 导出到 Codex | `/export-codex` | 将 DSH 会话写出为全新 Codex 对话副本 |
+| | 会话修复¹ | `/repair-sessions [--fix]` | 扫描会话存储中的重放损伤并原地修复（见下方排障章节） |
 | | 查看镜像状态 | `/mcp-status` | 弹窗查看每个 MCP 服务器的挂载状态与诊断信息 |
 | | 刷新状态 | `/codex-settings` | 实时重新拉取宿主机所有开关的真实值 |
 | **功能开关** | 导入命令 | `enableImport` | 启用 `/import-codex` 等 slash 命令族 |
@@ -146,6 +147,29 @@ dsh-codex-sync doctor
 | | 技能注册 | `enableSkills` | 将 `~/.codex/skills` 挂载为 DSH 原生技能 |
 | | MCP 镜像 | `mcpMirror` | 自动监听并镜像 `[mcp_servers.*]`（开关立即生效） |
 | **语言** | 语言切换 | `Language` | 切换界面简体中文 / English（本地记住） |
+
+> ¹ 设置面板左下角有一个小提醒，把「导入对话报错」与该命令关联起来。
+
+---
+
+## 🩺 排障：导入对话的 token meter / 重放报错
+
+**现象** —— 切换模型或压缩某个（导入的）对话时失败：
+
+```
+command.execute failed: internal: token meter: assistant/message at seq N has no matching step/start event
+corrupt session log: seq gap in committed region at line L
+```
+
+**原因** —— 换模型时 DSH 的 token meter 会对整个事件日志做冷重放校验（旧模型的 usage 锚点失效）。v1.6.0 之前写入的日志缺少配对的 `step/start…step/end` 标记，混合日志还可能带有失效的 seq 引用——这些损伤只在冷重放时才会暴露。
+
+**修复** —— 在任意 DSH 对话中执行（或终端运行 `dsh-codex-sync repair-sessions --fix`）：
+
+```
+/repair-sessions --fix
+```
+
+修复过程会合并接缝、补齐缺失的 step 标记、重映射引用、重编号 seq，并在写入前用真实的 `@deepseek-ai/dsh-token-meter` 校验，每个修复过的日志旁保留 `.bak` 备份。**v1.6.0+** 的导入天然合规，理论上不会再触发此问题。
 
 ---
 
