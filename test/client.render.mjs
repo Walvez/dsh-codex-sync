@@ -73,6 +73,63 @@ test('client bundle: loads, applies, renders SyncMenu without throwing', async (
   assert.doesNotMatch(html, /从 Codex 导入/, 'modal must stay closed in the idle render')
 })
 
+test('client bundle: settings modal renders open without throwing (regression)', () => {
+  const source = readFileSync(join(PROJECT, 'lib', 'client.js'), 'utf8')
+  // Inject a test export just before the factory's final return so the closure
+  // hands us the internal SyncSettingsModal component.
+  const hook = 'module.exports.__cxTest = { SyncSettingsModal }; '
+  const patched = source.replace(
+    'return module.exports; } });',
+    hook + 'return module.exports; } });'
+  )
+  assert.notEqual(patched, source, 'tail hook must be injectable')
+
+  let loaded
+  const windowMock = { __ModuleLoader__: { load: ({ factory }) => { loaded = factory } } }
+  const req = (id) => {
+    const reactDir2 = dshDep('react')
+    const reactDomDir2 = dshDep('react-dom')
+    if (!reactDir2 || !reactDomDir2) throw new Error('react not installed')
+    if (id === 'react') return require(join(reactDir2, 'index.js'))
+    if (id === 'react-dom') return require(join(reactDomDir2, 'index.js'))
+    throw new Error(`unexpected require: ${id}`)
+  }
+  new Function('window', 'require', patched)(windowMock, req)
+  // Invoke the captured factory to obtain the exports (with __cxTest attached).
+  const pluginExports = loaded(req)
+  assert.ok(pluginExports && pluginExports.__cxTest, 'factory must expose __cxTest hook')
+  const React = require(join(dshDep('react'), 'index.js'))
+  const { renderToStaticMarkup } = require(join(dshDep('react-dom'), 'server.js'))
+
+  const noop = () => {}
+  const item = { on: true, override: null }
+  const group = { default: true, items: { pdf: item } }
+  const html = renderToStaticMarkup(React.createElement(pluginExports.__cxTest.SyncSettingsModal, {
+    lang: 'zh',
+    setLang: noop,
+    settings: { enableImport: true, autoImport: false, enableInstructions: false, enableConfig: true, enableSkills: true, mcpMirror: true },
+    toggleSetting: noop,
+    itemsData: {
+      skills: group, mcps: group, skill: group, mcp: group,
+      hardDenyMcp: ['dsh-plugins'],
+      mirrorStatus: null,
+    },
+    itemsLoading: false,
+    onToggleItem: noop,
+    onSetAll: noop,
+    onOpenImport: noop,
+    onOpenExport: noop,
+    onShowStatus: noop,
+    onOpenManage: noop,
+    onOpenPath: noop,
+    onRefresh: noop,
+    onClose: noop,
+  }))
+  assert.match(html, /从 Codex 导入/, 'open modal must render action cards')
+  assert.match(html, /技能管理/, 'manager buttons must render')
+  assert.match(html, /功能开关/, 'switch section must render')
+})
+
 test('client bundle: overlay registration, data attributes, maid-atelier styling, and stable DOM detection', () => {
   const source = readFileSync(join(PROJECT, 'lib', 'client.js'), 'utf8')
 
