@@ -214,3 +214,66 @@ test('reader: parent_thread_id marks a sub-agent thread header', () => {
   assert.equal(isSubagentThread(header), true)
   assert.equal(isSubagentThread({}), false)
 })
+
+// ═══ step/start…step/end pairing: token-meter replay contract.
+// Every assistant/message, tool/call and tool/result must sit inside a paired
+// step region — @deepseek-ai/dsh-token-meter fails loud on unmarked logs
+// ("assistant/message at seq N has no matching step/start event") when a model
+// switch forces full-replay pricing.
+
+function assertStepPairing(events) {
+  let open = null
+  for (const e of events) {
+    if (e.type === 'step/start') {
+      assert.equal(open, null, `step/start at ${e.seq} while turn ${open?.turn}/step ${open?.step} still open`)
+      open = e.data
+    } else if (e.type === 'step/end') {
+      assert.ok(open, `step/end at ${e.seq} without matching step/start`)
+      assert.equal(open.turn, e.data.turn)
+      assert.equal(open.step, e.data.step)
+      open = null
+    } else if (e.type === 'assistant/message' || e.type === 'tool/call' || e.type === 'tool/result') {
+      assert.ok(open, `${e.type} at ${e.seq} outside a step/start…step/end region`)
+      assert.equal(open.turn, e.data.turn, `${e.type} at ${e.seq} in wrong turn`)
+      assert.equal(open.step, e.data.step, `${e.type} at ${e.seq} in wrong step`)
+    }
+  }
+  assert.equal(open, null, 'log ends with an open step')
+}
+
+test('convert: every assistant message and tool event sits inside paired step markers', () => {
+  const events = buildDshEvents(
+    [
+      { role: 'user', time: 1000, blocks: [{ type: 'text', text: 'q1' }] },
+      { role: 'assistant', time: 1100, provider: 'codex', model: 'm1', blocks: [{ type: 'text', text: 'a1' }] },
+      { role: 'user', time: 1200, blocks: [{ type: 'text', text: 'q2' }] },
+      { role: 'assistant', time: 1300, provider: 'codex', model: 'm1', blocks: [
+        { type: 'tool-call', id: 'call-1', name: 'shell', arguments: '{}' },
+        { type: 'text', text: 'working' },
+      ] },
+      { role: 'assistant', time: 1400, provider: 'codex', model: 'm1', blocks: [{ type: 'text', text: 'a2' }] },
+    ],
+    { toolEvents: true, titlePinned: true },
+  )
+  assertStepPairing(events)
+})
+
+test('convert: consecutive assistant messages get one step each, closed at turn boundaries', () => {
+  const events = buildDshEvents(
+    [
+      { role: 'user', time: 10, blocks: [{ type: 'text', text: 'hi' }] },
+      { role: 'assistant', time: 20, blocks: [{ type: 'text', text: 'one' }] },
+      { role: 'assistant', time: 30, blocks: [{ type: 'text', text: 'two' }] },
+      { role: 'user', time: 40, blocks: [{ type: 'text', text: 'again' }] },
+      { role: 'assistant', time: 50, blocks: [{ type: 'text', text: 'three' }] },
+    ],
+    { toolEvents: true },
+  )
+  assertStepPairing(events)
+  // turn/end must never be preceded by an unclosed step: verify ordering directly
+  for (let i = 0; i < events.length; i++) {
+    if (events[i].type === 'turn/end') {
+      assert.equal(events[i - 1].type, 'step/end', `turn/end at index ${i} must follow step/end`)
+    }
+  }
+})

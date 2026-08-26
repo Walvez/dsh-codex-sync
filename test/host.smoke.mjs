@@ -125,7 +125,7 @@ command = "computer"
     await new Promise((r) => setTimeout(r, 100))
 
     const names = ctx.commands.registered.map((d) => d.name)
-    assert.deepEqual(names, ['import-codex', 'import-all', 'export-codex', 'attach-workspaces', 'codex-settings', 'codex-setting', 'mcp-status', 'codex-skills', 'codex-skill', 'codex-mcps', 'codex-mcp', 'auto-import'])
+    assert.deepEqual(names, ['import-codex', 'import-all', 'export-codex', 'repair-sessions', 'attach-workspaces', 'codex-settings', 'codex-setting', 'mcp-status', 'codex-skills', 'codex-skill', 'codex-mcps', 'codex-mcp', 'auto-import'])
 
     const byName = Object.fromEntries(ctx.commands.registered.map((d) => [d.name, d]))
     const invocation = (rawInput = '') => Object.freeze({ commandId: 'x', agent: {}, rawInput, signal: null })

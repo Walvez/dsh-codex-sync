@@ -280,6 +280,12 @@ async function cmdDoctor(args) {
   console.log(lines.join('\n'))
 }
 
+const requireSR = createRequire(import.meta.url)
+function runRepairCli(args) {
+  const { runRepairCli: run } = requireSR('../lib/session-repair.mjs')
+  return run(args)
+}
+
 const [cmd, ...rest] = process.argv.slice(2)
 const args = parseArgs(rest)
 
@@ -293,6 +299,9 @@ switch (cmd) {
   case 'doctor':
     await cmdDoctor(args)
     break
+  case 'repair-sessions':
+    runRepairCli(args)
+    break
   case undefined:
   case '--help':
   case '-h':
@@ -300,9 +309,10 @@ switch (cmd) {
     console.log(`dsh-codex-sync ${PKG_VERSION} — Codex ↔ dsh sync CLI
 
 Usage:
-  dsh-codex-sync codex-install   [--profile web] [--allow-runtime] [--dir ~/.dsh-bridge] [--no-build]
-  dsh-codex-sync codex-uninstall [--dir ~/.dsh-bridge]
+  dsh-codex-sync codex-install     [--profile web] [--allow-runtime] [--dir ~/.dsh-bridge] [--no-build]
+  dsh-codex-sync codex-uninstall   [--dir ~/.dsh-bridge]
   dsh-codex-sync doctor
+  dsh-codex-sync repair-sessions   [--fix] [--root <~/.dsh/sessions>]
 
 Docs: https://github.com/Walvez/dsh-codex-sync
 `)
