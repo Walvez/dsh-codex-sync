@@ -174,3 +174,52 @@ test('import-codex: writes the session as format v3, not v0 (issue #2)', async (
   assert.ok(asst !== undefined && Array.isArray(asst.data.stream), 'v3 assistant/message carries a stream')
   assert.ok(events.some((e) => e.type === 'system/message'), 'v3 session carries a promoted system/message head')
 })
+
+test('import-codex: writes through the DSH 0.9.0 handle-based persistence API (no persistence.append)', async () => {
+  // DSH 0.9.0's sessionPersistence exposes list/create/open/delete and returns
+  // per-session HANDLES — it has NO append(id,…) and NO inspect(id). The
+  // plugin's facade must map its familiar calls onto open(id,'read'/'write') +
+  // handle.append/read/flush/close. Regression: importer used to call
+  // `persistence.append(id, events)` directly, which 0.9.0 rejects as
+  // "persistence.append is not a function" (issue #2 follow-up).
+  const store = new Map() // id -> { header, events }
+  const ops = []
+  const persistence = {
+    async list() { return [...store.keys()].map((id) => ({ header: store.get(id).header, revision: 'r', sizeBytes: 0 })) },
+    async create(header) {
+      store.set(header.id, { header, events: [] })
+      return {
+        async append(events) { ops.push('handle.append'); store.get(header.id).events.push(...events) },
+        async flush() { ops.push('handle.flush') },
+        async read() { return { eventState: 'current', events: store.get(header.id).events } },
+        async close() { ops.push('handle.close') },
+        header,
+      }
+    },
+    async open(id, access) {
+      ops.push(`open(${access})`)
+      const s = store.get(id)
+      if (s === undefined) throw new Error(`not found: ${id}`)
+      return {
+        async append(events) { ops.push('handle.append'); s.events.push(...events) },
+        async flush() { ops.push('handle.flush') },
+        async read() { return { eventState: 'current', events: s.events } },
+        async close() { ops.push('handle.close') },
+        header: s.header,
+      }
+    },
+    async delete(id) { return store.delete(id) },
+  }
+
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  await importCodex({ get: () => undefined }, persistence, {}, root)
+
+  assert.ok(store.has(main), 'session imported via create+handle.append')
+  assert.ok(!ops.some((o) => String(o).startsWith('persistence.')), 'must not call a persistence.* legacy method')
+  assert.ok(ops.includes('handle.append'), 'write goes through handle.append')
+  // Re-import with no new turns → update path inspects via open('read') and skips.
+  ops.length = 0
+  await importCodex({ get: () => undefined }, persistence, {}, root)
+  assert.ok(ops.includes('open(read)'), 'existing session is read via open(id,"read") not inspect()')
+})
