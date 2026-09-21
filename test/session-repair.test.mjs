@@ -63,3 +63,32 @@ test('repairEvents merges stale-cursor seams and remaps citations', () => {
   assert.ok(Array.isArray(tailMsg.sourceEventSeqs), 'tail citation kept')
   for (const s of tailMsg.sourceEventSeqs) assert.equal(fixed[s].type, 'assistant/chunk')
 })
+
+test('repairEvents opens a step before an orphan user/message (v0→v3 migration invariant)', () => {
+  // 旧版导入器生成 turn/start → user/message（无前置 step/start）。DSH 的
+  // format v0→v3 迁移要求任何 surface 事件出现在首个 step/start 之后，否则抛
+  // "format v2 surface before first step cannot acquire a system head ..."。
+  // 修复后 user/message 之前必须补一个 step/start。
+  const evs = [
+    { type: 'turn/start', seq: 0, time: 1000, data: { turn: 1 } },
+    { type: 'user/message', seq: 1, time: 1000, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'q' }], id: 'u1' }, surfaceOp: 'append' },
+    { type: 'assistant/message', seq: 2, time: 1100, data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'a' }], id: 'a1' } }, surfaceOp: 'append' },
+    { type: 'turn/end', seq: 3, time: 1200, data: { turn: 1, reason: { kind: 'completed' } } },
+  ]
+  const fixed = repairEvents(evs)
+  fixed.forEach((e, i) => assert.equal(e.seq, i, `seq dense at ${i}`))
+  // 每个 surface（user/message / assistant/message）都必须落在 open step 内
+  let open = null
+  let firstUserSeen = false
+  for (const e of fixed) {
+    if (e.type === 'step/start') open = e.data
+    else if (e.type === 'step/end' || e.type === 'turn/end') open = null
+    if (e.type === 'user/message') { firstUserSeen = true; assert.ok(open, 'user/message is inside a step region') }
+    if (e.type === 'assistant/message') assert.ok(open, 'assistant/message is inside a step region')
+  }
+  assert.ok(firstUserSeen, 'user/message present')
+  // 首个 step/start 必须出现在第一个 user/message 之前（满足 v2→v3 迁移不变式）
+  const firstStep = fixed.findIndex((e) => e.type === 'step/start')
+  const firstUser = fixed.findIndex((e) => e.type === 'user/message')
+  assert.ok(firstStep !== -1 && firstStep < firstUser, 'step/start precedes first user/message')
+})
