@@ -59,7 +59,10 @@ test('convert: control-only user message opens no turn and never seeds the title
   // no turn/start before the first real user message
   const firstUser = events.find((e) => e.type === 'user/message')
   assert.ok(firstUser, 'a user/message exists')
-  assert.equal(events.indexOf(firstUser), 1, 'first event is turn/start of the REAL first user message')
+  // event order is turn/start → step/start → user/message (issue #2: the first
+  // surface event must follow a step/start so the format v2→v3 migration can
+  // acquire its system head).
+  assert.equal(events.indexOf(firstUser), 2, 'user/message follows turn/start and step/start')
   const text = firstUser.data.content.map((b) => b.text).join('')
   assert.equal(text, '帮我安装 deepseek harness 到本机\n')
 
