@@ -144,3 +144,33 @@ test('import-codex: re-import appends new Codex turns onto an existing session',
   const users = store.get(main).filter((e) => e.type === 'user/message').map((e) => e.data.content.map((b) => b.text).join(''))
   assert.ok(users.some((t) => t.includes('user-main-2')))
 })
+
+test('import-codex: writes the session as format v3, not v0 (issue #2)', async () => {
+  // DSH 0.9.0 persistence rejects a v0 header on write ("encodeCurrent requires
+  // Session format v3"), so the importer must migrate the imported v0 artifact
+  // to the current v3 format via session-migrate. When the DSH runtime is
+  // reachable (DSH_CHECKOUT or the app install) the migration resolves; only
+  // then can we assert the v3 shape on the written session.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const { persistence, ctx, store, metas } = stubPersistence()
+  await importCodex(ctx, persistence, {}, root)
+  const meta = metas.get(main)
+  assert.ok(meta, 'session created')
+  let migrationAvailable = false
+  try {
+    const { migrateToCurrent } = await import('../lib/session-migrate.mjs')
+    migrateToCurrent({ version: 0, id: 'probe', createdAt: 1, cwd: '/tmp' }, [])
+    migrationAvailable = true
+  } catch {
+    migrationAvailable = false
+  }
+  if (!migrationAvailable) return // no DSH runtime; importer fell back to v0
+  // Migration resolved → the importer MUST have written v3.
+  assert.equal(meta.version, 3, 'imported session header must be v3 (not v0)')
+  assert.equal(meta.isSeeded, false, 'v3 header carries isSeeded=false')
+  const events = store.get(main) ?? []
+  const asst = events.find((e) => e.type === 'assistant/message')
+  assert.ok(asst !== undefined && Array.isArray(asst.data.stream), 'v3 assistant/message carries a stream')
+  assert.ok(events.some((e) => e.type === 'system/message'), 'v3 session carries a promoted system/message head')
+})
