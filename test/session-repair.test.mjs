@@ -116,3 +116,22 @@ test('listSessionFiles prefers the versioned current-format log over the legacy 
   assert.ok(!files.some((f) => f === join(both, 'session.jsonl.zstd')), 'superseded legacy log not listed')
   assert.ok(files.includes(join(legacyOnly, 'session.jsonl.zstd')), 'legacy-only dir still scanned')
 })
+
+test('migrateToCurrent starts the chain at the stored version and normalizeTitleMessageSeqs clears user-title citations', async () => {
+  const { normalizeTitleMessageSeqs } = await import('../lib/session-repair.mjs')
+  const { migrateToCurrent } = await import('../lib/session-migrate.mjs')
+  // Old importer damage: user-kind title citing messageSeqs (legal v3, illegal v4).
+  const evs = [
+    { type: 'user/message', seq: 0, time: 1, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'q' }], id: 'u1' } },
+    { type: 'session/title', seq: 1, time: 2, data: { title: 't', messageSeqs: [0], source: { kind: 'user' } } },
+  ]
+  const normalized = normalizeTitleMessageSeqs(evs)
+  assert.equal(normalized[1].data.messageSeqs.length, 0, 'user-kind title citations cleared')
+  assert.equal(normalized[0], evs[0], 'non-title events untouched')
+  // A v3 stored artifact must migrate through v3→v4 ONLY (no v0 re-run).
+  const probe = migrateToCurrent({ version: 3, id: 'probe', createdAt: 1, cwd: '/tmp', isSeeded: false, delegationDepth: 0 }, [])
+  assert.equal(probe.header.version, 4, 'v3 artifact migrates straight to the current format')
+  // v0 input keeps working end-to-end through the whole chain.
+  const fromV0 = migrateToCurrent({ version: 0, id: 'probe', createdAt: 1, cwd: '/tmp' }, [])
+  assert.equal(fromV0.header.version, 4, 'v0 artifact migrates through the full chain')
+})
