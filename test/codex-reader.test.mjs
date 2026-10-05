@@ -59,7 +59,10 @@ test('convert: control-only user message opens no turn and never seeds the title
   // no turn/start before the first real user message
   const firstUser = events.find((e) => e.type === 'user/message')
   assert.ok(firstUser, 'a user/message exists')
-  assert.equal(events.indexOf(firstUser), 1, 'first event is turn/start of the REAL first user message')
+  // event order is turn/start → step/start → user/message (issue #2: the first
+  // surface event must follow a step/start so the format v2→v3 migration can
+  // acquire its system head).
+  assert.equal(events.indexOf(firstUser), 2, 'user/message follows turn/start and step/start')
   const text = firstUser.data.content.map((b) => b.text).join('')
   assert.equal(text, '帮我安装 deepseek harness 到本机\n')
 
@@ -276,4 +279,36 @@ test('convert: consecutive assistant messages get one step each, closed at turn 
       assert.equal(events[i - 1].type, 'step/end', `turn/end at index ${i} must follow step/end`)
     }
   }
+})
+
+
+test('function_call: preserves arguments and prefers them over legacy input', () => {
+  const args = '{"text":"standard function argument"}'
+  const file = nextFile('function-arguments')
+  write(file, rolloutOf([
+    { type: 'response_item', timestamp: '2026-08-17T10:00:01Z', payload: {
+      type: 'function_call', call_id: 'function-1', name: 'fixture_echo', arguments: args, input: 'wrong legacy input',
+    } },
+    { type: 'response_item', timestamp: '2026-08-17T10:00:02Z', payload: {
+      type: 'function_call_output', call_id: 'function-1', output: 'function result',
+    } },
+  ]))
+  const { messages } = parseCodexSession(file)
+  const blocks = messages.flatMap(m => m.blocks)
+  assert.equal(blocks.find(b => b.type === 'tool-call').arguments, args)
+  assert.deepEqual(blocks.find(b => b.type === 'tool-result').content, [{ type: 'text', text: 'function result' }])
+})
+
+test('tool inputs: function arguments objects and empty strings; custom calls keep input', () => {
+  const file = nextFile('tool-input-variants')
+  write(file, rolloutOf([
+    ...[
+      { type: 'function_call', call_id: 'object', name: 'echo', arguments: { text: 'object' } },
+      { type: 'function_call', call_id: 'empty', name: 'echo', arguments: '', input: 'must not replace empty' },
+      { type: 'function_call', call_id: 'legacy', name: 'echo', input: 'legacy input' },
+      { type: 'custom_tool_call', call_id: 'custom', name: 'patch', input: 'custom input', arguments: 'wrong' },
+    ].map(payload => ({ type: 'response_item', timestamp: '2026-08-17T10:00:01Z', payload })),
+  ]))
+  const calls = parseCodexSession(file).messages.flatMap(m => m.blocks).filter(b => b.type === 'tool-call')
+  assert.deepEqual(calls.map(b => b.arguments), ['{"text":"object"}', '', 'legacy input', 'custom input'])
 })

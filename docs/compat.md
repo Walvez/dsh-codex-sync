@@ -35,3 +35,8 @@ DSH sessions can be exported back to Codex as rollout JSONL files and indexed in
 - **Selectable rules**: Only DSH-updated Codex-origin chats (`dshUpdated=true`, tagged "Updated in DSH" / "DSH 已续聊") are selectable. Unchanged or source-missing Codex chats remain grayed out and locked. Native DSH sessions are selectable.
 - **Independent copy**: Every export creates a brand-new Codex rollout (new uuid) and thread entry. It never overwrites the original Codex thread.
 - **Sub-agents**: Hidden by default (`hideSub`, default on) and nested under their parent sessions for organization. Selecting a child sub-agent exports it as a separate standalone Codex thread (no merge with parent).
+
+
+Runtime package versions and default activation checks are described in [COMPATIBILITY.md](COMPATIBILITY.md).
+
+Reverse export preserves user and assistant text; it does not reconstruct tool traces or the original thread id. Use the native DSH archive export to retain the stored event log.

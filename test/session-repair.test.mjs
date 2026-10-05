@@ -63,3 +63,75 @@ test('repairEvents merges stale-cursor seams and remaps citations', () => {
   assert.ok(Array.isArray(tailMsg.sourceEventSeqs), 'tail citation kept')
   for (const s of tailMsg.sourceEventSeqs) assert.equal(fixed[s].type, 'assistant/chunk')
 })
+
+test('repairEvents opens a step before an orphan user/message (v0→v3 migration invariant)', () => {
+  // 旧版导入器生成 turn/start → user/message（无前置 step/start）。DSH 的
+  // format v0→v3 迁移要求任何 surface 事件出现在首个 step/start 之后，否则抛
+  // "format v2 surface before first step cannot acquire a system head ..."。
+  // 修复后 user/message 之前必须补一个 step/start。
+  const evs = [
+    { type: 'turn/start', seq: 0, time: 1000, data: { turn: 1 } },
+    { type: 'user/message', seq: 1, time: 1000, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'q' }], id: 'u1' }, surfaceOp: 'append' },
+    { type: 'assistant/message', seq: 2, time: 1100, data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'a' }], id: 'a1' } }, surfaceOp: 'append' },
+    { type: 'turn/end', seq: 3, time: 1200, data: { turn: 1, reason: { kind: 'completed' } } },
+  ]
+  const fixed = repairEvents(evs)
+  fixed.forEach((e, i) => assert.equal(e.seq, i, `seq dense at ${i}`))
+  // 每个 surface（user/message / assistant/message）都必须落在 open step 内
+  let open = null
+  let firstUserSeen = false
+  for (const e of fixed) {
+    if (e.type === 'step/start') open = e.data
+    else if (e.type === 'step/end' || e.type === 'turn/end') open = null
+    if (e.type === 'user/message') { firstUserSeen = true; assert.ok(open, 'user/message is inside a step region') }
+    if (e.type === 'assistant/message') assert.ok(open, 'assistant/message is inside a step region')
+  }
+  assert.ok(firstUserSeen, 'user/message present')
+  // 首个 step/start 必须出现在第一个 user/message 之前（满足 v2→v3 迁移不变式）
+  const firstStep = fixed.findIndex((e) => e.type === 'step/start')
+  const firstUser = fixed.findIndex((e) => e.type === 'user/message')
+  assert.ok(firstStep !== -1 && firstStep < firstUser, 'step/start precedes first user/message')
+})
+
+test('listSessionFiles prefers the versioned current-format log over the legacy name', async () => {
+  // DSH 0.10.x writes session.v4.jsonl.zstd; older builds wrote
+  // session.jsonl.zstd. A dir holding both must yield exactly the versioned
+  // one (the legacy file is a superseded pre-repair state), and legacy-only
+  // dirs keep working.
+  const { listSessionFiles } = await import('../lib/session-repair.mjs')
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-repair-'))
+  const both = join(root, 'ws-a', 'sess-both')
+  mkdirSync(both, { recursive: true })
+  writeFileSync(join(both, 'session.jsonl.zstd'), 'x')
+  writeFileSync(join(both, 'session.v4.jsonl.zstd'), 'x')
+  const legacyOnly = join(root, 'ws-a', 'sess-legacy')
+  mkdirSync(legacyOnly, { recursive: true })
+  writeFileSync(join(legacyOnly, 'session.jsonl.zstd'), 'x')
+  const files = listSessionFiles(root)
+  assert.equal(files.length, 2)
+  assert.ok(files.includes(join(both, 'session.v4.jsonl.zstd')), 'versioned log preferred when both exist')
+  assert.ok(!files.some((f) => f === join(both, 'session.jsonl.zstd')), 'superseded legacy log not listed')
+  assert.ok(files.includes(join(legacyOnly, 'session.jsonl.zstd')), 'legacy-only dir still scanned')
+})
+
+test('migrateToCurrent starts the chain at the stored version and normalizeTitleMessageSeqs clears user-title citations', async () => {
+  const { normalizeTitleMessageSeqs } = await import('../lib/session-repair.mjs')
+  const { migrateToCurrent } = await import('../lib/session-migrate.mjs')
+  // Old importer damage: user-kind title citing messageSeqs (legal v3, illegal v4).
+  const evs = [
+    { type: 'user/message', seq: 0, time: 1, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'q' }], id: 'u1' } },
+    { type: 'session/title', seq: 1, time: 2, data: { title: 't', messageSeqs: [0], source: { kind: 'user' } } },
+  ]
+  const normalized = normalizeTitleMessageSeqs(evs)
+  assert.equal(normalized[1].data.messageSeqs.length, 0, 'user-kind title citations cleared')
+  assert.equal(normalized[0], evs[0], 'non-title events untouched')
+  // A v3 stored artifact must migrate through v3→v4 ONLY (no v0 re-run).
+  const probe = migrateToCurrent({ version: 3, id: 'probe', createdAt: 1, cwd: '/tmp', isSeeded: false, delegationDepth: 0 }, [])
+  assert.equal(probe.header.version, 4, 'v3 artifact migrates straight to the current format')
+  // v0 input keeps working end-to-end through the whole chain.
+  const fromV0 = migrateToCurrent({ version: 0, id: 'probe', createdAt: 1, cwd: '/tmp' }, [])
+  assert.equal(fromV0.header.version, 4, 'v0 artifact migrates through the full chain')
+})

@@ -5,19 +5,28 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         node: [20, 22]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      - name: Install Zstandard CLI for Node 20 compression and codec checks
+        run: sudo apt-get update && sudo apt-get install -y zstd
       - name: Install deps (cordis/react/react-dom for the host+client suites)
         run: npm ci
       - name: Test suite (reader + host smoke + client render; hermetic, no dsh install needed)
@@ -32,6 +41,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,10 +52,19 @@ jobs:
       - name: pack plugin and add to a scratch web profile
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
-          npm pack --silent
-          pnpm dlx @deepseek-ai/dsh plugin --profile web add "$PWD"/dsh-codex-sync-*.tgz
+          npm pack --json > pack.json
+          TGZ="$(node -p 'JSON.parse(require("fs").readFileSync("pack.json"))[0].filename')"
+          mkdir "$RUNNER_TEMP/packed-plugin"
+          tar -xzf "$TGZ" -C "$RUNNER_TEMP/packed-plugin"
+          cmp lib/codex-reader.mjs "$RUNNER_TEMP/packed-plugin/package/lib/codex-reader.mjs"
+          cmp package.json "$RUNNER_TEMP/packed-plugin/package/package.json"
+          cmp lib/zstd-frame.mjs "$RUNNER_TEMP/packed-plugin/package/lib/zstd-frame.mjs"
+          cmp docs/COMPATIBILITY.md "$RUNNER_TEMP/packed-plugin/package/docs/COMPATIBILITY.md"
+          git rev-parse HEAD
+          sha256sum "$TGZ"
+          pnpm dlx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add "$PWD/$TGZ"
           echo "DSH_HOME=$DSH_HOME" >> "$GITHUB_ENV"
       - name: composed config mentions this plugin
         run: |
-          pnpm dlx @deepseek-ai/dsh --profile web --dump-config > composed.txt
+          pnpm dlx @deepseek-ai/dsh@0.2.0-rc.2 --profile web --dump-config > composed.txt
           grep -E "dsh-codex-sync|codex-sync" composed.txt

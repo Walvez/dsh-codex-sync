@@ -14,7 +14,9 @@ const suites = [
   'test/plugin-skill.test.mjs',
   'test/export-codex.test.mjs',
   'test/item-sync.test.mjs',
+  'test/convert-order.test.mjs',
   'test/session-repair.test.mjs',
+  'test/zstd-frame.test.mjs',
 ]
 
 function findDshCheckout() {
