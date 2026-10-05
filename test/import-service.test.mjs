@@ -1,7 +1,9 @@
 /**
  * import-service: codex sub-agent threads are filtered by default and
  * re-included with importSubagents: true. Hermetic — stub persistence + ctx,
- * throwaway codex home. No dsh install needed.
+ * throwaway codex home. The real @deepseek-ai/dsh-session-format-* migration
+ * packages are devDependencies, so the migration path is exercised without a
+ * DSH install.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -32,6 +34,18 @@ function makeSession(root, name, metaExtra = {}) {
   return `codex-sess-${name}`
 }
 
+/**
+ * Mirror real DSH session-persistence: `create` runs `encodeCurrentHeader`,
+ * which rejects anything below the current format ("encodeCurrent requires
+ * Session format v3" on 0.9.x, "…v4" on 0.10.x). A silent v0 fallback in the
+ * importer therefore becomes a hard test failure here instead of passing.
+ */
+function assertCurrentFormatHeader(header) {
+  if ((header?.version ?? 0) < 3) {
+    throw new Error(`encodeCurrent requires Session format v3 (got v${header?.version ?? 'undefined'})`)
+  }
+}
+
 function stubPersistence() {
   const store = new Map()
   const metas = new Map()
@@ -40,7 +54,7 @@ function stubPersistence() {
     metas,
     persistence: {
       async list() { return [...store.keys()].map((id) => ({ id })) },
-      async create(meta) { metas.set(meta.id, meta); store.set(meta.id, []) },
+      async create(meta) { assertCurrentFormatHeader(meta); metas.set(meta.id, meta); store.set(meta.id, []) },
       async append(id, events) { store.set(id, [...(store.get(id) ?? []), ...events]) },
       async inspect(id) { return { meta: metas.get(id) ?? { id }, events: store.get(id) ?? [] } },
     },
@@ -145,34 +159,54 @@ test('import-codex: re-import appends new Codex turns onto an existing session',
   assert.ok(users.some((t) => t.includes('user-main-2')))
 })
 
-test('import-codex: writes the session as format v3, not v0 (issue #2)', async () => {
-  // DSH 0.9.0 persistence rejects a v0 header on write ("encodeCurrent requires
-  // Session format v3"), so the importer must migrate the imported v0 artifact
-  // to the current v3 format via session-migrate. When the DSH runtime is
-  // reachable (DSH_CHECKOUT or the app install) the migration resolves; only
-  // then can we assert the v3 shape on the written session.
+test('import-codex: writes the session in the installed current format, not v0 (issue #2)', async () => {
+  // DSH persistence rejects older formats on write ("encodeCurrent requires
+  // Session format v4" on DSH 0.10.x), so the importer must migrate the
+  // imported v0 artifact to the installed current format via session-migrate.
+  // The REAL migration packages are devDependencies, so this path is REQUIRED
+  // (no early return): if the chain cannot resolve, migrateToCurrent throws
+  // and importCodex now fails loudly instead of writing v0.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const { persistence, ctx, store, metas } = stubPersistence()
+  const { migrateToCurrent } = await import('../lib/session-migrate.mjs')
+  const probe = migrateToCurrent({ version: 0, id: 'probe', createdAt: 1, cwd: '/tmp' }, [])
+  assert.ok(
+    probe.header.version >= 3,
+    `migration chain must resolve to the current format (got v${probe.header.version}); run npm install so the @deepseek-ai/dsh-session-format-* devDependencies are present`,
+  )
+  await importCodex(ctx, persistence, {}, root)
+  const meta = metas.get(main)
+  assert.ok(meta, 'session created')
+  assert.equal(meta.version, probe.header.version, 'imported session header must be the migrated current format (not v0)')
+  assert.equal(meta.isSeeded, false, 'migrated header carries isSeeded=false')
+  const events = store.get(main) ?? []
+  const asst = events.find((e) => e.type === 'assistant/message')
+  assert.ok(asst !== undefined && Array.isArray(asst.data.stream), 'current-format assistant/message carries a stream')
+  assert.ok(events.some((e) => e.type === 'system/message'), 'session carries a promoted system/message head')
+})
+
+test('import-codex: written session passes the real DSH current-format write gate', async () => {
+  // The exact gate that rejected v3 writes on DSH 0.10.0 with
+  // "encodeCurrent requires Session format v4": the written header and every
+  // written event must encode as the installed current format, and the
+  // artifact must restore through the real current-format restorer (i.e. the
+  // persisted session can be reopened by DSH).
   const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
   const main = makeSession(root, 'main')
   const { persistence, ctx, store, metas } = stubPersistence()
   await importCodex(ctx, persistence, {}, root)
   const meta = metas.get(main)
-  assert.ok(meta, 'session created')
-  let migrationAvailable = false
-  try {
-    const { migrateToCurrent } = await import('../lib/session-migrate.mjs')
-    migrateToCurrent({ version: 0, id: 'probe', createdAt: 1, cwd: '/tmp' }, [])
-    migrationAvailable = true
-  } catch {
-    migrationAvailable = false
-  }
-  if (!migrationAvailable) return // no DSH runtime; importer fell back to v0
-  // Migration resolved → the importer MUST have written v3.
-  assert.equal(meta.version, 3, 'imported session header must be v3 (not v0)')
-  assert.equal(meta.isSeeded, false, 'v3 header carries isSeeded=false')
   const events = store.get(main) ?? []
-  const asst = events.find((e) => e.type === 'assistant/message')
-  assert.ok(asst !== undefined && Array.isArray(asst.data.stream), 'v3 assistant/message carries a stream')
-  assert.ok(events.some((e) => e.type === 'system/message'), 'v3 session carries a promoted system/message head')
+  const { sessionFormatCatalog } = await import('@deepseek-ai/dsh-session-format-catalog')
+  assert.equal(meta.version, sessionFormatCatalog.currentVersion, 'written header version must equal the installed current format')
+  sessionFormatCatalog.encodeCurrentHeader(meta, 0) // must not throw
+  for (const event of events) sessionFormatCatalog.encodeCurrentEvent(event) // must not throw
+  // Restore through the real restorer (pinned to v4 while the devDeps track
+  // the 0.1.7-rc.2 packages of DSH 0.10.0).
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  restoreReleasedV4Artifact({ header: meta, events, inheritedEventCount: 0 }, KNOWN_SESSION_EVENT_TYPES)
 })
 
 test('import-codex: writes through the DSH 0.9.0 handle-based persistence API (no persistence.append)', async () => {
@@ -187,6 +221,7 @@ test('import-codex: writes through the DSH 0.9.0 handle-based persistence API (n
   const persistence = {
     async list() { return [...store.keys()].map((id) => ({ header: store.get(id).header, revision: 'r', sizeBytes: 0 })) },
     async create(header) {
+      if ((header?.version ?? 0) < 3) throw new Error(`encodeCurrent requires Session format v3 (got v${header?.version ?? 'undefined'})`)
       store.set(header.id, { header, events: [] })
       return {
         async append(events) { ops.push('handle.append'); store.get(header.id).events.push(...events) },
