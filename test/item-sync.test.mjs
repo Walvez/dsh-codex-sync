@@ -80,6 +80,7 @@ test('skills: provider list() hides user-disabled entries', async () => {
 })
 
 test('mirror: sync() gates servers by per-item preference and refresh() re-applies', async () => {
+  let mirror
   const home = freshHome()
   const codexHome = mkdtempSync(join(tmpdir(), 'cx-sync-mcphome-'))
   try {
@@ -94,7 +95,7 @@ command = "echo"
     // Distinct fixture dir: node --test runs test FILES concurrently, and
     // host.smoke.mjs owns the canonical FAKE path — sharing it races the
     // two files' install/remove cycles.
-    const fakeDir = join(PROJECT, 'node_modules', '.cx-sync-item-fixture', '@deepseek-ai', 'dsh-mcp-client')
+    const fakeDir = join(PROJECT, 'node_modules', '.cx-sync-item-fixture', 'node_modules', '@deepseek-ai', 'dsh-mcp-client')
     mkdirSync(fakeDir, { recursive: true })
     writeFileSync(join(fakeDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-mcp-client', version: '0.0.0-fake', type: 'module', main: 'index.js' }))
     writeFileSync(join(fakeDir, 'index.js'), `
@@ -113,7 +114,7 @@ FakeMcpClient.instances = []
       logger: { info() {}, warn() {} },
       plugin: async () => { mounted.push(1); return () => {} },
     }
-    const mirror = startMcpMirror(ctx, codexHome, {})
+    mirror = startMcpMirror(ctx, codexHome, {})
     await mirror.refresh()
     let reasons = Object.fromEntries(mirror.getStatus().servers.map((s) => [s.name, s.reason]))
     assert.equal(reasons.alpha, 'mounted')
@@ -131,8 +132,8 @@ FakeMcpClient.instances = []
     assert.equal(reasons.beta, 'mounted')
     assert.equal(effectiveItemSync('mcp', 'beta'), true)
 
-    mirror.dispose()
   } finally {
+    mirror?.dispose()
     rmSync(home, { recursive: true, force: true })
     rmSync(codexHome, { recursive: true, force: true })
     rmSync(join(PROJECT, 'node_modules', '.cx-sync-item-fixture'), { recursive: true, force: true })

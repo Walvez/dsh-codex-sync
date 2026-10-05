@@ -15,3 +15,5 @@ Use a profile dependency plus the bundle patch insert, as in
 `examples/web-profile.cordis.patch.yml`. Do not also add the same bundle to
 `dsh.profile.bundles`. Verify installation and actual activation without
 `plugin allow-version`; a composed configuration alone is insufficient.
+
+Node 20 requires the `zstd` executable for checksummed compression; newer Node runtimes with native Zstandard use the native API. The repair CLI already requires `zstd` for decompression. CI checks both compression paths.
