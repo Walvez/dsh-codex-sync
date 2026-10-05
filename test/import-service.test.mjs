@@ -159,6 +159,29 @@ test('import-codex: re-import appends new Codex turns onto an existing session',
   assert.ok(users.some((t) => t.includes('user-main-2')))
 })
 
+test('import-codex: paginated rollout segments of one thread merge into a single session', async () => {
+  // Codex continues a thread in NEW rollout files named
+  // `rollout-<ts>-<uuid>_<fork>.jsonl` carrying the same session id and only
+  // the delta turns. Each file used to be its own candidate → the second
+  // segment called create() again and aborted the batch with
+  // "session codex-… already exists".
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  const segment = [
+    { type: 'session_meta', payload: { id: 'sess-main', cwd: '/tmp/proj', timestamp: '2026-08-17T12:00:00.000Z', source: 'cli' } },
+    rawEvent({ type: 'message', id: 'm-main-seg', role: 'user', content: [{ type: 'input_text', text: 'user-main-seg' }] }),
+  ]
+  writeFileSync(join(dir, 'rollout-main_fork1.jsonl'), segment.map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+  const { persistence, ctx, store } = stubPersistence()
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /imported 1/, 'both segments must produce exactly ONE create')
+  const users = store.get(main).filter((e) => e.type === 'user/message').map((e) => e.data.content.map((b) => b.text).join(''))
+  assert.ok(users.some((t) => t.includes('user-main-1')), 'base segment messages imported')
+  assert.ok(users.some((t) => t.includes('user-main-seg')), 'continuation segment messages imported in the same session')
+})
+
 test('import-codex: writes the session in the installed current format, not v0 (issue #2)', async () => {
   // DSH persistence rejects older formats on write ("encodeCurrent requires
   // Session format v4" on DSH 0.10.x), so the importer must migrate the

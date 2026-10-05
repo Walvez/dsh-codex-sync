@@ -92,3 +92,27 @@ test('repairEvents opens a step before an orphan user/message (v0→v3 migration
   const firstUser = fixed.findIndex((e) => e.type === 'user/message')
   assert.ok(firstStep !== -1 && firstStep < firstUser, 'step/start precedes first user/message')
 })
+
+test('listSessionFiles prefers the versioned current-format log over the legacy name', async () => {
+  // DSH 0.10.x writes session.v4.jsonl.zstd; older builds wrote
+  // session.jsonl.zstd. A dir holding both must yield exactly the versioned
+  // one (the legacy file is a superseded pre-repair state), and legacy-only
+  // dirs keep working.
+  const { listSessionFiles } = await import('../lib/session-repair.mjs')
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-repair-'))
+  const both = join(root, 'ws-a', 'sess-both')
+  mkdirSync(both, { recursive: true })
+  writeFileSync(join(both, 'session.jsonl.zstd'), 'x')
+  writeFileSync(join(both, 'session.v4.jsonl.zstd'), 'x')
+  const legacyOnly = join(root, 'ws-a', 'sess-legacy')
+  mkdirSync(legacyOnly, { recursive: true })
+  writeFileSync(join(legacyOnly, 'session.jsonl.zstd'), 'x')
+  const files = listSessionFiles(root)
+  assert.equal(files.length, 2)
+  assert.ok(files.includes(join(both, 'session.v4.jsonl.zstd')), 'versioned log preferred when both exist')
+  assert.ok(!files.some((f) => f === join(both, 'session.jsonl.zstd')), 'superseded legacy log not listed')
+  assert.ok(files.includes(join(legacyOnly, 'session.jsonl.zstd')), 'legacy-only dir still scanned')
+})
