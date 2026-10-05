@@ -280,3 +280,35 @@ test('convert: consecutive assistant messages get one step each, closed at turn 
     }
   }
 })
+
+
+test('function_call: preserves arguments and prefers them over legacy input', () => {
+  const args = '{"text":"standard function argument"}'
+  const file = nextFile('function-arguments')
+  write(file, rolloutOf([
+    { type: 'response_item', timestamp: '2026-08-17T10:00:01Z', payload: {
+      type: 'function_call', call_id: 'function-1', name: 'fixture_echo', arguments: args, input: 'wrong legacy input',
+    } },
+    { type: 'response_item', timestamp: '2026-08-17T10:00:02Z', payload: {
+      type: 'function_call_output', call_id: 'function-1', output: 'function result',
+    } },
+  ]))
+  const { messages } = parseCodexSession(file)
+  const blocks = messages.flatMap(m => m.blocks)
+  assert.equal(blocks.find(b => b.type === 'tool-call').arguments, args)
+  assert.deepEqual(blocks.find(b => b.type === 'tool-result').content, [{ type: 'text', text: 'function result' }])
+})
+
+test('tool inputs: function arguments objects and empty strings; custom calls keep input', () => {
+  const file = nextFile('tool-input-variants')
+  write(file, rolloutOf([
+    ...[
+      { type: 'function_call', call_id: 'object', name: 'echo', arguments: { text: 'object' } },
+      { type: 'function_call', call_id: 'empty', name: 'echo', arguments: '', input: 'must not replace empty' },
+      { type: 'function_call', call_id: 'legacy', name: 'echo', input: 'legacy input' },
+      { type: 'custom_tool_call', call_id: 'custom', name: 'patch', input: 'custom input', arguments: 'wrong' },
+    ].map(payload => ({ type: 'response_item', timestamp: '2026-08-17T10:00:01Z', payload })),
+  ]))
+  const calls = parseCodexSession(file).messages.flatMap(m => m.blocks).filter(b => b.type === 'tool-call')
+  assert.deepEqual(calls.map(b => b.arguments), ['{"text":"object"}', '', 'legacy input', 'custom input'])
+})
