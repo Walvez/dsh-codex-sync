@@ -34,6 +34,35 @@ function makeSession(root, name, metaExtra = {}) {
   return `codex-sess-${name}`
 }
 
+/** Write a rollout with an arbitrary message sequence: [{ role, text, time }]. */
+function writeRollout(root, name, entries) {
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  mkdirSync(dir, { recursive: true })
+  const meta = {
+    type: 'session_meta',
+    payload: { id: `sess-${name}`, cwd: '/tmp/proj', timestamp: '2026-08-17T10:00:00.000Z', source: 'cli' },
+  }
+  const lines = [meta, ...entries.map((e) => rawEvent({
+    type: 'message',
+    id: `m-${name}-${e.role}-${e.text}`,
+    role: e.role,
+    content: [{ type: e.role === 'user' ? 'input_text' : 'output_text', text: e.text }],
+  }))]
+  writeFileSync(join(dir, `rollout-${name}.jsonl`), lines.map((e) => JSON.stringify(e)).join('\n') + '\n')
+  return `codex-sess-${name}`
+}
+
+/** Append raw response_item lines to an existing rollout file. */
+function appendMessages(root, name, entries) {
+  const file = join(root, 'sessions', '2026', '08', '17', `rollout-${name}.jsonl`)
+  appendFileSync(file, entries.map((e) => JSON.stringify(rawEvent({
+    type: 'message',
+    id: `m-${name}-${e.role}-${e.text}`,
+    role: e.role,
+    content: [{ type: e.role === 'user' ? 'input_text' : 'output_text', text: e.text }],
+  }))).join('\n') + '\n')
+}
+
 /**
  * Mirror real DSH session-persistence: `create` runs `encodeCurrentHeader`,
  * which rejects anything below the current format ("encodeCurrent requires
@@ -308,6 +337,106 @@ test('import-codex: same-turn assistant continuation lands in a self-consistent 
   validate() // combined old + appended suffix must STILL restore cleanly
   const users = store.get(main).filter((e) => e.type === 'user/message')
   assert.equal(users.length, 1, 'no duplicated user message')
+})
+
+test('import-codex: a reply arriving after a user-only import is stored (pending-question continuation)', async () => {
+  // Review round 4: the first import while the reply was still pending stored
+  // [user q] only. Re-importing after the assistant answered reported
+  // "updated 0, skipped 1" and the answer was silently LOST: the equal-user
+  // branch of diffImportEvents incremented its assistant counter before
+  // comparing, so the oldAssistants === 0 match could never fire. The stored
+  // answer, the combined-artifact restore AND idempotence are all asserted.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = writeRollout(root, 'pend', [
+    { role: 'user', text: 'user-pend-q', time: '2026-08-17T10:00:01.000Z' },
+  ])
+  const { persistence, ctx, store, metas } = stubPersistence()
+  await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.equal((store.get(main) ?? []).filter((e) => e.type === 'assistant/message').length, 0, 'precondition: imported while the reply was pending')
+
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  const validate = () => restoreReleasedV4Artifact(
+    { header: metas.get(main), events: store.get(main), inheritedEventCount: 0 },
+    KNOWN_SESSION_EVENT_TYPES,
+  )
+  validate()
+
+  appendMessages(root, 'pend', [
+    { role: 'assistant', text: 'assistant-pend-answer', time: '2026-08-17T11:00:00.000Z' },
+  ])
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /updated 1/, 'the pending reply must be stored, not skipped')
+  const events = store.get(main)
+  const answers = events.filter((e) => e.type === 'assistant/message')
+  assert.equal(answers.length, 1, 'exactly the one new assistant message is stored')
+  assert.ok(JSON.stringify(answers[0].data.message.content).includes('assistant-pend-answer'), 'the stored answer carries the new text')
+  assert.equal(events.filter((e) => e.type === 'user/message').length, 1, 'no duplicated user message')
+  validate() // combined old + appended answer must restore through the real restorer
+
+  const again = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(again.join('\n'), /updated 0, skipped 1/, 'an unchanged re-import stays idempotent')
+  assert.equal(store.get(main).length, events.length, 'idempotent re-import writes nothing')
+})
+
+test('import-codex: a pending reply AND a following new turn are both stored', async () => {
+  // The new content may START inside old's last turn (the reply to a still
+  // pending question) and CONTINUE with complete new turns. Both parts must
+  // land: the pending-turn slice repacked as one fresh turn, the new turns
+  // renumbered after it — the combined artifact must restore.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = writeRollout(root, 'mix', [
+    { role: 'user', text: 'user-mix-q1', time: '2026-08-17T10:00:01.000Z' },
+  ])
+  const { persistence, ctx, store, metas } = stubPersistence()
+  await importCodex(ctx, persistence, { ids: [main] }, root)
+
+  appendMessages(root, 'mix', [
+    { role: 'assistant', text: 'assistant-mix-a1', time: '2026-08-17T11:00:00.000Z' },
+    { role: 'user', text: 'user-mix-q2', time: '2026-08-17T11:00:01.000Z' },
+    { role: 'assistant', text: 'assistant-mix-a2', time: '2026-08-17T11:00:02.000Z' },
+  ])
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /updated 1/)
+  const events = store.get(main)
+  const textOf = (e) => JSON.stringify(e.data?.message?.content ?? e.data?.content ?? [])
+  const assistants = events.filter((e) => e.type === 'assistant/message').map(textOf)
+  assert.equal(assistants.length, 2, 'both assistant messages stored')
+  assert.ok(assistants.some((t) => t.includes('assistant-mix-a1')) && assistants.some((t) => t.includes('assistant-mix-a2')))
+  const users = events.filter((e) => e.type === 'user/message').map(textOf)
+  assert.equal(users.length, 2, 'no duplicated user message')
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  restoreReleasedV4Artifact({ header: metas.get(main), events, inheritedEventCount: 0 }, KNOWN_SESSION_EVENT_TYPES)
+})
+
+test('import-codex: a reply to a turn without an assistant is stored even after earlier complete turns', async () => {
+  // Same counting defect, multi-turn shape: stored [q1, a1, q2] (turn 2 still
+  // pending) — the old code matched neither "the oldAssistants-th assistant"
+  // (it sits in turn 1) nor the seen===match-1 guard, so a2 was dropped.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = writeRollout(root, 'late', [
+    { role: 'user', text: 'user-late-q1', time: '2026-08-17T10:00:01.000Z' },
+    { role: 'assistant', text: 'assistant-late-a1', time: '2026-08-17T10:00:02.000Z' },
+    { role: 'user', text: 'user-late-q2', time: '2026-08-17T10:00:03.000Z' },
+  ])
+  const { persistence, ctx, store, metas } = stubPersistence()
+  await importCodex(ctx, persistence, { ids: [main] }, root)
+
+  appendMessages(root, 'late', [
+    { role: 'assistant', text: 'assistant-late-a2', time: '2026-08-17T11:00:00.000Z' },
+  ])
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /updated 1/, 'the pending reply must be stored, not skipped')
+  const events = store.get(main)
+  const assistants = events.filter((e) => e.type === 'assistant/message')
+  assert.equal(assistants.length, 2)
+  assert.ok(JSON.stringify(assistants[1].data.message.content).includes('assistant-late-a2'))
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  restoreReleasedV4Artifact({ header: metas.get(main), events, inheritedEventCount: 0 }, KNOWN_SESSION_EVENT_TYPES)
+  const again = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(again.join('\n'), /updated 0, skipped 1/, 'idempotent on the next unchanged import')
 })
 
 test('import-codex: new-turn re-import combined artifact restores cleanly', async () => {
