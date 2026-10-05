@@ -281,3 +281,96 @@ test('import-codex: writes through the DSH 0.9.0 handle-based persistence API (n
   await importCodex({ get: () => undefined }, persistence, {}, root)
   assert.ok(ops.includes('open(read)'), 'existing session is read via open(id,"read") not inspect()')
 })
+
+test('import-codex: same-turn assistant continuation lands in a self-consistent turn (combined restore)', async () => {
+  // Old importer damage (review issue 1): re-importing [q,a,b] over a stored
+  // [q,a] produced a suffix starting with turn/start(2) followed by step/end(1)
+  // — old.events + suffix failed the real v4 restorer. The continuation is now
+  // repacked into ONE fresh turn and the COMBINED artifact must restore.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const { persistence, ctx, store, metas } = stubPersistence()
+  await importCodex(ctx, persistence, { ids: [main] }, root)
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  const validate = () => restoreReleasedV4Artifact(
+    { header: metas.get(main), events: store.get(main), inheritedEventCount: 0 },
+    KNOWN_SESSION_EVENT_TYPES,
+  )
+  validate() // first import restores cleanly
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-main.jsonl')
+  appendFileSync(file, [
+    { type: 'response_item', timestamp: '2026-08-17T11:00:00.000Z', payload: { type: 'message', id: 'm-main-b', role: 'assistant', content: [{ type: 'output_text', text: 'assistant-main-cont' }] } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /updated 1/)
+  validate() // combined old + appended suffix must STILL restore cleanly
+  const users = store.get(main).filter((e) => e.type === 'user/message')
+  assert.equal(users.length, 1, 'no duplicated user message')
+})
+
+test('import-codex: new-turn re-import combined artifact restores cleanly', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const { persistence, ctx, store, metas } = stubPersistence()
+  await importCodex(ctx, persistence, { ids: [main] }, root)
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-main.jsonl')
+  appendFileSync(file, [
+    { type: 'response_item', timestamp: '2026-08-17T12:00:00.000Z', payload: { type: 'message', id: 'm-main-2', role: 'user', content: [{ type: 'input_text', text: 'user-main-2' }] } },
+    { type: 'response_item', timestamp: '2026-08-17T12:00:01.000Z', payload: { type: 'message', id: 'm-main-3', role: 'assistant', content: [{ type: 'output_text', text: 'assistant-main-2' }] } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+  const lines = await importCodex(ctx, persistence, { ids: [main] }, root)
+  assert.match(lines.join('\n'), /updated 1/)
+  // COMBINED old + appended new turn must pass the real current-format restorer.
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  restoreReleasedV4Artifact(
+    { header: metas.get(main), events: store.get(main), inheritedEventCount: 0 },
+    KNOWN_SESSION_EVENT_TYPES,
+  )
+})
+
+test('import-codex: a failed read skips the session instead of appending to it', async () => {
+  // Review issue 3: inspect() used to swallow read errors as empty history,
+  // which would append the whole source onto an existing session.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  const main = makeSession(root, 'main')
+  const appended = []
+  const persistence = {
+    async list() { return [{ id: main }] }, // session already exists
+    async inspect() { throw new Error('simulated disk read failure') },
+    async append(id, events) { appended.push([id, events]) },
+    async create() { throw new Error('create must not be reached') },
+  }
+  const lines = await importCodex({ get: () => undefined }, persistence, {}, root)
+  assert.equal(appended.length, 0, 'no append after a failed read')
+  assert.match(lines.join('\n'), /skipped 1/)
+})
+
+test('import-codex: a failed flush surfaces instead of reporting success', async () => {
+  // Review issue 4: createAndAppend used to swallow flush/close failures and
+  // resolve successfully on a disk-full. Cleanup is still attempted, then the
+  // durability error propagates.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
+  makeSession(root, 'main')
+  const ops = []
+  const persistence = {
+    async list() { return [] },
+    async create(header) {
+      return {
+        async append() { ops.push('append') },
+        async flush() { ops.push('flush'); throw new Error('disk full') },
+        async close() { ops.push('close') },
+        header,
+      }
+    },
+    async open() { throw new Error('not opened') },
+  }
+  await assert.rejects(
+    () => importCodex({ get: () => undefined }, persistence, {}, root),
+    /disk full/,
+  )
+  assert.deepEqual(ops, ['append', 'flush', 'close'], 'cleanup attempted before surfacing the error')
+})
