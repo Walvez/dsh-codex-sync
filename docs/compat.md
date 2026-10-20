@@ -40,3 +40,5 @@ DSH sessions can be exported back to Codex as rollout JSONL files and indexed in
 Runtime package versions and default activation checks are described in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 Reverse export preserves user and assistant text; it does not reconstruct tool traces or the original thread id. Use the native DSH archive export to retain the stored event log.
+
+Codex import titles are looked up by thread ID on each request: the current read-only `state_5.sqlite` name/title overrides `session_index.jsonl`, then rollout metadata, first user text, or the ID supplies a fallback. Native Node SQLite is used when available; older Node versions use the optional `sqlite3` CLI. Missing metadata does not prevent imports. Saved titles retain their full length; prompt-derived fallbacks remain limited to 80 characters. Existing DSH conversations are not renamed on re-import.
