@@ -9,7 +9,7 @@ What this plugin syncs from OpenAI Codex into DeepSeek Harness.
 | `~/.codex/config.toml` model fields | System-prompt summary | **on** (`enableConfig`) | Same live re-read. |
 | `[mcp_servers.*]` in `config.toml` | Mirrored MCP clients | **on** (`mcpMirror`) | Live file watch. Deny/silent lists apply. Restart DSH after toggling. |
 | Reverse MCP (`codex-install`) | `[mcp_servers.dsh-plugins]` in Codex | one-shot CLI | Gives Codex `dsh_plugin_*` tools. |
-| `~/.codex/sessions/**/rollout-*.jsonl` | Resumable DSH sessions (`codex-<id>`) | import commands | Idempotent. Real tool traces. Image fragments cleaned. Size guard on huge rollouts. |
+| `~/.codex/sessions/**/rollout-*.jsonl[.zst]` | Resumable DSH sessions (`codex-<id>`) | import commands | Idempotent. Real tool traces. Image fragments cleaned. Size guard on huge rollouts. |
 | Sub-agent rollouts | Optional | filtered by default | Keeps the session list focused. `/import-codex --include-subagents` or `importSubagents: true` includes them. |
 | Reasoning summaries | Assistant messages | on | Plaintext / `summary` blocks fold into the imported turn. |
 
@@ -40,3 +40,5 @@ DSH sessions can be exported back to Codex as rollout JSONL files and indexed in
 Runtime package versions and default activation checks are described in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 Reverse export preserves user and assistant text; it does not reconstruct tool traces or the original thread id. Use the native DSH archive export to retain the stored event log.
+
+Compressed Codex rollouts (`.jsonl.zst`) are decoded in memory, including concatenated Zstandard frames. Node versions without native Zstandard require `zstd` on `PATH`. The import size limit applies to both stored and decoded bytes; corrupt frames are reported as unreadable. If both encodings of one rollout exist, the plain `.jsonl` is preferred. No source files are rewritten.

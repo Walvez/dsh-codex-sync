@@ -239,8 +239,8 @@ async function cmdDoctor(args) {
             ok += 1
             if (header.parentThreadId) subagents += 1
           }
-        } catch {
-          /* unreadable */
+        } catch (error) {
+          if (error.code === 'CODEX_SESSION_TOO_LARGE') big += 1
         }
       }
     }

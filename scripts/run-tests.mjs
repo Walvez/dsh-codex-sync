@@ -10,6 +10,7 @@ const suites = [
   'test/host.smoke.mjs',
   'test/client.render.mjs',
   'test/codex-reader.test.mjs',
+  'test/compressed-rollouts.test.mjs',
   'test/import-service.test.mjs',
   'test/plugin-skill.test.mjs',
   'test/export-codex.test.mjs',
