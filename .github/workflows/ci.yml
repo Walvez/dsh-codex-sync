@@ -27,18 +27,21 @@ jobs:
           cache: npm
       - name: Install Zstandard CLI for Node 20 compression and codec checks
         run: sudo apt-get update && sudo apt-get install -y zstd
-      - name: Install deps (cordis/react/react-dom for the host+client suites)
-        run: npm ci
-      - name: Test suite (reader + host smoke + client render; hermetic, no dsh install needed)
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Existing and live-sync regression suites plus actual-tarball privacy gate
         run: npm test
       - name: CLI smoke
         run: node bin/dsh-codex-sync.js --help
 
-  # Real DSH host boot: a harness release that breaks the plugin contract
-  # fails here instead of on the user's machine.
+  # Composition only: a successful dump is not host boot or GUI acceptance.
   dsh-boot-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: [0.2.0-rc.2, 0.2.1-rc.2, 0.2.1-rc.3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,13 +49,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - run: npm ci
+          node-version: 24
+      - run: npm ci --ignore-scripts
       - run: npm install -g pnpm
-      - name: pack plugin and add to a scratch web profile
+      - name: Pack exact source and add to a scratch web profile
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
-          npm pack --json > pack.json
+          npm pack --ignore-scripts --json > pack.json
           TGZ="$(node -p 'JSON.parse(require("fs").readFileSync("pack.json"))[0].filename')"
           mkdir "$RUNNER_TEMP/packed-plugin"
           tar -xzf "$TGZ" -C "$RUNNER_TEMP/packed-plugin"
@@ -62,9 +65,50 @@ jobs:
           cmp docs/COMPATIBILITY.md "$RUNNER_TEMP/packed-plugin/package/docs/COMPATIBILITY.md"
           git rev-parse HEAD
           sha256sum "$TGZ"
-          pnpm dlx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add "$PWD/$TGZ"
+          pnpm dlx @deepseek-ai/dsh@${{ matrix.dsh }} plugin --profile web add "$PWD/$TGZ"
           echo "DSH_HOME=$DSH_HOME" >> "$GITHUB_ENV"
-      - name: composed config mentions this plugin
+      - name: Composed config mentions this plugin
         run: |
-          pnpm dlx @deepseek-ai/dsh@0.2.0-rc.2 --profile web --dump-config > composed.txt
+          pnpm dlx @deepseek-ai/dsh@${{ matrix.dsh }} --profile web --dump-config > composed.txt
           grep -E "dsh-codex-sync|codex-sync" composed.txt
+
+  current-skills-contract:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+        fixture: [current-runtime, current-runtime-rc3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --ignore-scripts
+      - name: Locked Skills contract for one supported runtime
+        run: npm run test:current -- test/${{ matrix.fixture }}
+
+  native-mcp-contract:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        fixture: [native-runtime, native-runtime-rc3, native-runtime-020-rc2]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Locked native MCP contract for one supported runtime
+        run: npm run test:native -- test/${{ matrix.fixture }}

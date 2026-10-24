@@ -33,6 +33,8 @@
       "default": "./lib/index.js"
     },
     "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
     "./package.json": "./package.json"
   },
   "files": [
@@ -44,12 +46,18 @@
     "cordis.patch.yml",
     "examples",
     "docs",
+    "!docs/*.local.md",
+    "locale",
+    "icon.svg",
     "lib",
     "skills",
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "test:current": "node scripts/run-contract-tests.mjs skills",
+    "test:native": "node scripts/run-contract-tests.mjs native",
+    "test:package": "node --test test/package-contents.test.mjs"
   },
   "bin": {
     "dsh-codex-sync": "bin/dsh-codex-sync.js"
@@ -68,19 +76,27 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "dsh": "^0.0.1-rc.1 || >=0.2.0-rc.2 <0.3.0-0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1 || 0.2.0-rc.2"
+    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1 || >=0.2.0-rc.2 <0.3.0-0 || >=0.2.1-rc.2 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-mcp-client": {
       "optional": true
     }
   },
+  "dependencies": {
+    "chokidar": "4.0.3",
+    "smol-toml": "1.9.1",
+    "yaml": "2.9.1"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "semver": "^7.7.2",
     "@deepseek-ai/dsh-session-format-catalog": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session-format-v0-to-v1": "0.1.7-rc.2",
     "@deepseek-ai/dsh-session-format-v1-to-v2": "0.1.7-rc.2",

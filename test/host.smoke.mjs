@@ -44,25 +44,31 @@ test('state: persisted settings override config defaults (DSH_HOME temp)', async
     assert.equal(raw.autoImport, true)
     assert.equal(raw.enableInstructions, false)
   } finally {
-    process.env.DSH_HOME = prevHome ?? ''
+    if (prevHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = prevHome
     rmSync(tempHome, { recursive: true, force: true })
   }
 })
-const FAKE = join(PROJECT, 'node_modules', '@deepseek-ai', 'dsh-mcp-client')
-
+let fakeRoot
+let FAKE
 function installFakeMcpClient() {
+  fakeRoot = mkdtempSync(join(tmpdir(), 'cx-sync-host-mcp-'))
+  FAKE = join(fakeRoot, 'node_modules', '@deepseek-ai', 'dsh-mcp-client')
+  process.env.DSH_CX_SYNC_MCP_CLIENT_DIR = fakeRoot
   mkdirSync(FAKE, { recursive: true })
   writeFileSync(join(FAKE, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-mcp-client', version: '0.0.0-fake', type: 'module', main: 'index.js' }))
-  writeFileSync(join(FAKE, 'index.js'), 'export default class FakeMcpClient { constructor() {} }\n')
+  writeFileSync(join(FAKE, 'index.js'), `export { Config } from ${JSON.stringify(new URL('./mcp-schema-fixture.mjs', import.meta.url).href)};\nexport default class FakeMcpClient { constructor() {} }\n`)
 }
 function removeFakeMcpClient() {
-  // remove ONLY the fake fixture package — never the whole @deepseek-ai scope
-  // (it also contains real deps like cordis / schemastery)
-  rmSync(FAKE, { recursive: true, force: true })
+  // Only the uniquely-created OS-temporary fixture; never an installed peer.
+  assert.ok(fakeRoot?.startsWith(join(tmpdir(), 'cx-sync-host-mcp-')))
+  rmSync(fakeRoot, { recursive: true, force: true })
 }
 
 test('host plugin: commands, invocation args, auto-import persistence, mirror status', async (t) => {
+  const previous = { home: process.env.DSH_HOME, fixture: process.env.DSH_CX_SYNC_MCP_CLIENT_DIR, token: process.env.CODEX_SYNC_FIXTURE_TOKEN }
   process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'cx-sync-test-'))
+  process.env.CODEX_SYNC_FIXTURE_TOKEN = 'synthetic-test-token'
   installFakeMcpClient()
   // Hermetic mirror fixture: a throwaway codex config so the mirror never
   // reads the real ~/.codex/config.toml (which changes as the user adds MCP
@@ -74,7 +80,7 @@ test('host plugin: commands, invocation args, auto-import persistence, mirror st
 [mcp_servers.cloudflare-api]
 type = "streamable-http"
 url = "https://mcp.cloudflare.com/mcp"
-bearer_token_env_var = "CLOUDFLARE_API_TOKEN"
+bearer_token_env_var = "CODEX_SYNC_FIXTURE_TOKEN"
 [mcp_servers.exa]
 type = "stdio"
 command = "exa"
@@ -228,8 +234,15 @@ command = "computer"
     assert.equal(typeof getMcpStatus.data.autoImport, 'boolean')
   } finally {
     // closing the mirror's fs.watch lets the event loop drain (no runner hang)
-    try { mirror?.dispose?.() } catch { /* ignore */ }
+    await mirror?.dispose?.()
     removeFakeMcpClient()
+    const testHome = process.env.DSH_HOME
+    assert.ok(testHome.startsWith(join(tmpdir(), 'cx-sync-test-')))
+    rmSync(testHome, { recursive: true, force: true })
+    for (const [key, value] of [['DSH_HOME', previous.home], ['DSH_CX_SYNC_MCP_CLIENT_DIR', previous.fixture], ['CODEX_SYNC_FIXTURE_TOKEN', previous.token]]) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
   }
 })
 

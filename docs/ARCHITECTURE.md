@@ -124,18 +124,21 @@ Two sources (lib/mcp.js):
   server (`@deepseek-ai/dsh-mcp-client`, optional peer; graceful warning if
   missing).
 - **Auto-mirror** (`mcpMirror`, default on) — parses `~/.codex/config.toml`
-  `[mcp_servers.*]` (TOML-lite parser: command/args/env/cwd + url/
-  bearer_token_env_var + enabled), maps:
+  `[mcp_servers.*]` (complete TOML parser; command/args/env/env_vars/cwd,
+  URL/static/environment headers, bearer references, timeouts and enabled), maps:
   - stdio → `{ transport: 'stdio', serverName, command, args, env }`
   - url → `{ transport: 'streamable-http', url, headers: { Authorization:
     'Bearer <process.env[VAR]>' } }`
   - skips `enabled = false`; **always excludes `dsh-plugins`** (the reverse
     bridge — would recurse); `mcpMirrorDeny`/`mcpMirrorOnly` filter; names in
     explicit `mcpServers` win.
-  - `fs.watch(config.toml)` + 500 ms debounce → diff mount/unmount, so
-    editing codex's config live-syncs dsh's MCP servers.
-  - `failOnStartupError: false` on every instance: a failing server logs and
-    continues.
+  - Parent-directory observation plus bounded polling handles missing roots and
+    repeated atomic replacements; only changed generations are replaced.
+  - Per-generation cancellation and same-name retirement barriers do not block
+    later revocations behind another server's startup or teardown.
+  - Mirrored clients require initial readiness and own bounded initial retries;
+    explicit clients retain native dependency waiting and reconnect behavior.
+    See [live-sync contracts](LIVE-SYNC.md) for limits and synthetic tests.
 
 ## 6. Client bundle (lib/client.js)
 

@@ -1,0 +1,11 @@
+{
+  "name": "codex-sync-native-mcp-020-rc2-contract",
+  "private": true,
+  "type": "module",
+  "description": "Isolated DSH 0.2.0-rc.2 native SDK contract fixture; never distributed with the plugin.",
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2"
+  }
+}

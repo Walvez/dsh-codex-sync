@@ -82,7 +82,9 @@ When adopting or exploring **DeepSeek Harness (DSH)**, developers typically face
 ### 2. ⚡ Live First-Class Skills Mounting
 - Mounts `~/.codex/skills/*/SKILL.md` directly into DSH's native skill catalog;
 - Full support for nested directory resources and multi-file skill bundles;
-- **Zero-restart updates**: Edit a skill file on disk, and DSH recognizes the change on the next turn.
+- **Zero-restart updates**: additions, deletion, rename and YAML metadata changes invalidate the owning registry cache; bodies are reread on load. Master/per-item switches also update cached catalogs.
+
+For the bounded 0.2 upgrade policy (including 0.2.1-rc.3), native API checks, supported fields, trust boundary and synthetic release checks, see [Live sync compatibility](docs/LIVE-SYNC.md). No user-specific profiles, service inventories or runtime snapshots are included.
 
 ### 3. 🔌 Automated Bidirectional MCP Mirroring
 - **Codex → DSH**: Watches `~/.codex/config.toml` live, dynamically mirroring `[mcp_servers.*]` to DSH with conflict avoidance and stderr silencing;

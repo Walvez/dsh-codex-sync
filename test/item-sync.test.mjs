@@ -99,6 +99,7 @@ command = "echo"
     mkdirSync(fakeDir, { recursive: true })
     writeFileSync(join(fakeDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-mcp-client', version: '0.0.0-fake', type: 'module', main: 'index.js' }))
     writeFileSync(join(fakeDir, 'index.js'), `
+export { Config } from ${JSON.stringify(new URL('./mcp-schema-fixture.mjs', import.meta.url).href)};
 export default class FakeMcpClient {
   constructor(opts) { this.opts = opts; FakeMcpClient.instances.push(this) }
 }

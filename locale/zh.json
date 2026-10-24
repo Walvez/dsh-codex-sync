@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Codex 同步",
+    "description": "实时挂载 Codex 技能、镜像启用的 MCP，并管理 Codex 与 DSH 对话的导入导出。"
+  }
+}

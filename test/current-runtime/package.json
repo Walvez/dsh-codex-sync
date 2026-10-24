@@ -1,0 +1,10 @@
+{
+  "name": "codex-sync-current-runtime-contract",
+  "private": true,
+  "type": "module",
+  "description": "Isolated current-DSH contract fixtures; never distributed with the plugin.",
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-skill": "0.2.1-rc.2"
+  }
+}

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Admit the DSH MCP client 0.2.1-rc.2 without compatibility exemptions; resolve shipped clients through the Host Loader with an npm fallback.
+- Make Codex Skills cache invalidation registration-owned and watched, including late-created roots and master/per-item changes; parse real YAML invocation policies and fix flat-file resource bases.
+- Use complete TOML parsing and portable field validation; keep unsupported tool policies fail-closed and diagnostics free of source excerpts/credential values.
+- Retain actual Cordis Fibers, cancel the full startup pipeline, join namespace retirement before replacement, and admit revocations independently of unrelated starts/teardowns. Preserve explicit native reconnect and late dependency activation.
+- Add hermetic lifecycle/cache/native-protocol suites and actual-tarball privacy gates; exclude local deployment notes/runtime artifacts and export localized metadata plus an original MIT icon.
+
+
 ## 1.6.2 — 2026-10-05
 
 - Import sessions in the installed DSH current format and support handle-based persistence, incremental assistant replies, new turns, and idempotent re-imports (PR #3).
