@@ -92,6 +92,60 @@ let n = 0
 const write = (file, text) => { writeFileSync(file, text); return file }
 const nextFile = (kind) => write(join(mkdtempSync(join(tmpdir(), 'cx-new-')), `${kind}-${++n}.jsonl`), '')
 
+test('reader: identical user prompts separated by an assistant reply keep both turns', () => {
+  const file = nextFile('repeat-prompt')
+  write(file, rolloutOf([
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: 'continue' }]),
+    msg('T2', '2026-08-17T10:00:02Z', 'assistant', [{ type: 'output_text', text: 'ok' }]),
+    msg('T3', '2026-08-17T10:00:03Z', 'user', [{ type: 'input_text', text: 'continue' }]),
+    msg('T4', '2026-08-17T10:00:04Z', 'assistant', [{ type: 'output_text', text: 'done' }]),
+  ]))
+  const { messages } = parseCodexSession(file)
+  assert.deepEqual(messages.map(m => [m.role, m.blocks[0].text]), [
+    ['user', 'continue'], ['assistant', 'ok'], ['user', 'continue'], ['assistant', 'done'],
+  ])
+  const events = buildDshEvents(messages)
+  assert.equal(events.filter(e => e.type === 'user/message').length, 2)
+  assert.equal(events.filter(e => e.type === 'turn/start').length, 2)
+  assert.deepEqual(events.filter(e => e.type === 'assistant/message').map(e => e.data.turn), [1, 2])
+})
+
+test('reader: consecutive identical user prompt echoes still collapse', () => {
+  const file = nextFile('prompt-echo')
+  write(file, rolloutOf([
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: 'continue' }]),
+    msg('T2', '2026-08-17T10:00:02Z', 'user', [{ type: 'input_text', text: 'continue' }]),
+    msg('T3', '2026-08-17T10:00:03Z', 'assistant', [{ type: 'output_text', text: 'done' }]),
+  ]))
+  const { messages } = parseCodexSession(file)
+  assert.deepEqual(messages.map(m => [m.role, m.blocks[0].text]), [
+    ['user', 'continue'], ['assistant', 'done'],
+  ])
+  assert.equal(buildDshEvents(messages).filter(e => e.type === 'turn/start').length, 1)
+})
+
+for (const payload of [
+  { type: 'custom_tool_call', call_id: 'c1', name: 'echo', input: 'hi' },
+  { type: 'custom_tool_call_output', call_id: 'c1', output: 'hi' },
+  { type: 'function_call', call_id: 'c1', name: 'echo', arguments: '{}' },
+  { type: 'function_call_output', call_id: 'c1', output: 'hi' },
+  { type: 'reasoning', summary: 'thinking' },
+  { type: 'reasoning', summary: [] },
+  { type: 'message', role: 'assistant', content: [] },
+  { type: 'message', role: 'developer', content: [] },
+]) {
+  test(`reader: ${payload.type} ${payload.role ?? JSON.stringify(payload.summary) ?? ''} breaks prompt dedupe`, () => {
+    const file = nextFile('prompt-boundary')
+    write(file, rolloutOf([
+      msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: 'continue' }]),
+      { type: 'response_item', timestamp: '2026-08-17T10:00:02Z', payload },
+      msg('T3', '2026-08-17T10:00:03Z', 'user', [{ type: 'input_text', text: 'continue' }]),
+    ]))
+    const { messages } = parseCodexSession(file)
+    assert.deepEqual(messages.filter(m => m.role === 'user').map(m => m.blocks[0].text), ['continue', 'continue'])
+  })
+}
+
 test('new schema: tool call + real output fold into one assistant message with real result', () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '改一下 main.js' }]),
