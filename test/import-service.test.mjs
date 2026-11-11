@@ -106,6 +106,53 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
 })
 
+test('import-codex: an unfinished Codex goal becomes an active DSH goal', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goal-'))
+  const id = makeSession(root, 'goal')
+  // Codex writes one snapshot per goal mutation; the last one (paused) wins.
+  appendFileSync(join(root, 'sessions', '2026', '08', '17', 'rollout-goal.jsonl'), [
+    { type: 'event_msg', timestamp: '2026-08-17T10:00:02.000Z', payload: { type: 'thread_goal_updated', threadId: 'sess-goal', goal: { threadId: 'sess-goal', objective: '把插件适配做完', status: 'active', createdAt: 1787000000, updatedAt: 1787000100 } } },
+    { type: 'event_msg', timestamp: '2026-08-17T10:00:03.000Z', payload: { type: 'thread_goal_updated', threadId: 'sess-goal', goal: { threadId: 'sess-goal', objective: '把插件适配做完', status: 'paused', createdAt: 1787000000, updatedAt: 1787000200 } } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  await importCodex(ctx, persistence, {}, root)
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(goals.length, 2, 'create + pause')
+  assert.equal(goals[0].data.operation, 'create')
+  assert.equal(goals[0].data.goal.objective, '把插件适配做完')
+  assert.equal(goals[0].data.goal.id, `goal-${id}`)
+  assert.equal(goals[1].data.operation, 'pause')
+  assert.equal(goals[1].data.goal.phase, 'paused')
+})
+
+test('import-codex: re-import follows a Codex goal that changed to paused', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goal2-'))
+  const id = makeSession(root, 'goal2')
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-goal2.jsonl')
+  const goalLine = (status, updatedAt) => JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:04.000Z',
+    payload: { type: 'thread_goal_updated', threadId: 'sess-goal2', goal: { threadId: 'sess-goal2', objective: '继续推进', status, createdAt: 1787000000, updatedAt } },
+  })
+  appendFileSync(file, goalLine('active', 1787000100) + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  await importCodex(ctx, persistence, {}, root)
+  const first = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(first.length, 1)
+  assert.equal(first[0].data.goal.phase, 'active')
+
+  // Codex pauses the goal; the next import must append only the transition.
+  appendFileSync(file, goalLine('paused', 1787000200) + '\n')
+  await importCodex(ctx, persistence, {}, root)
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(goals.length, 2)
+  assert.equal(goals[1].data.operation, 'pause')
+  assert.equal(goals[1].data.goal.phase, 'paused')
+  assert.equal(goals[1].data.goal.revision, 2)
+})
+
 test('catalog: nests sub-agents under parent and marks imported', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
   const mainId = makeSession(root, 'main')

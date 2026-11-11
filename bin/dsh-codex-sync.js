@@ -124,16 +124,28 @@ export function ensureReverseServer(dir, noBuild) {
     log(`✓ reverse MCP server already built: ${cliPath}`)
     return cliPath
   }
-  log(`→ cloning ${REVERSE_REPO} into ${dir}`)
-  execFileSync('git', ['clone', '--depth', '1', REVERSE_REPO, dir], { stdio: 'inherit' })
+  if (!existsSync(dir)) {
+    log(`→ cloning ${REVERSE_REPO} into ${dir}`)
+    execFileSync('git', ['clone', '--depth', '1', REVERSE_REPO, dir], { stdio: 'inherit' })
+  } else {
+    log(`→ directory exists, skipping clone: ${dir}`)
+  }
   if (noBuild) {
     log('! --no-build: server cloned but not built; run `pnpm install && pnpm build` inside the dir')
     return cliPath
   }
   log('→ pnpm install')
-  execFileSync('pnpm', ['install'], { cwd: dir, stdio: 'inherit' })
-  log('→ pnpm build')
-  execFileSync('pnpm', ['build'], { cwd: dir, stdio: 'inherit' })
+  const pnpmPath = 'C:\\Users\\neo\\.dsh\\dsh-runtimes\\dsh-primary-runtime\\dependencies\\pnpm\\bin\\pnpm.mjs'
+  const nodeBin = process.execPath
+  if (existsSync(pnpmPath)) {
+    execFileSync(nodeBin, [pnpmPath, 'install'], { cwd: dir, stdio: 'inherit' })
+    log('→ pnpm build')
+    execFileSync(nodeBin, [pnpmPath, 'build'], { cwd: dir, stdio: 'inherit' })
+  } else {
+    execFileSync('pnpm', ['install'], { cwd: dir, stdio: 'inherit' })
+    log('→ pnpm build')
+    execFileSync('pnpm', ['build'], { cwd: dir, stdio: 'inherit' })
+  }
   if (!existsSync(cliPath)) {
     throw new Error(`build finished but ${cliPath} is missing`)
   }
@@ -219,22 +231,25 @@ async function cmdDoctor(args) {
   // codex sessions + oversized risk
   try {
     const { listCodexSessions, parseCodexSession } = await import('../lib/codex-reader.mjs')
+    const { DEFAULT_MAX_SESSION_BYTES } = await import('../lib/import-service.js')
     const files = listCodexSessions(join(CODEX_HOME, 'sessions'))
     let big = 0
     let ok = 0
     let subagents = 0
+    let compressed = 0
     const { statSync } = await import('node:fs')
     for (const f of files) {
+      if (f.endsWith('.zst')) compressed += 1
       let size = 0
       try {
         size = statSync(f).size
       } catch {
         continue
       }
-      if (size > 256 * 1024 * 1024) big += 1
+      if (size > DEFAULT_MAX_SESSION_BYTES) big += 1
       else {
         try {
-          const header = parseCodexSession(f).header
+          const header = (await parseCodexSession(f)).header
           if (header.id) {
             ok += 1
             if (header.parentThreadId) subagents += 1
@@ -244,7 +259,14 @@ async function cmdDoctor(args) {
         }
       }
     }
-    lines.push(`codex sessions: ${files.length} files, ${ok} importable, ${subagents} sub-agent threads (filtered from import), ${big} oversized (>256MiB, skipped)`)
+    lines.push(`codex sessions: ${files.length} files (${compressed} zstd-compressed), ${ok} importable, ${subagents} internal threads (guardian/sub-agent, filtered from import), ${big} oversized (>${Math.round(DEFAULT_MAX_SESSION_BYTES / 1024 / 1024)}MiB, skipped)`)
+    try {
+      const { loadCodexIndex } = await import('../lib/codex-index.mjs')
+      const index = loadCodexIndex(CODEX_HOME)
+      lines.push(`codex catalog: ${index.threads.size} threads, ${index.projects.size} projects (source: ${index.source})`)
+    } catch (error) {
+      lines.push(`codex catalog: unavailable (${error.message})`)
+    }
   } catch (error) {
     lines.push(`codex sessions: scan failed (${error.message})`)
   }

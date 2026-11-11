@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildRolloutJsonl, dshEventsToCodexMessages, exportToCodex, listExportCatalog, titleOf } from '../lib/export-codex.js'
+import { buildRolloutJsonl, codexGoalSnapshot, dshEventsToCodexMessages, exportToCodex, goalOf, listExportCatalog, titleOf } from '../lib/export-codex.js'
 
 test('dshEventsToCodexMessages keeps user and assistant text', () => {
   const msgs = dshEventsToCodexMessages([
@@ -67,6 +67,49 @@ test('exportToCodex writes a session_meta + response_item jsonl', async () => {
   assert.ok(kinds.includes('event_msg:user_message'))
   const userItem = rows.find((r) => r.payload?.type === 'user_message')
   assert.equal(userItem.payload.message, 'hi')
+})
+
+test('buildRolloutJsonl carries goal mode as a thread_goal_updated snapshot', () => {
+  const now = Date.parse('2026-01-01T00:00:00Z')
+  const goalChange = (phase, extra = {}) => ({
+    type: 'goal/change',
+    time: now,
+    data: {
+      kind: 'goal/change',
+      version: 1,
+      operation: 'create',
+      goal: { id: 'goal-1', revision: 1, objective: '把目标带过去', phase, maxGoalRounds: 256 },
+      roundsStarted: 0,
+      createdAt: now,
+      updatedAt: now,
+      ...extra,
+    },
+  })
+  const build = (events) => buildRolloutJsonl({
+    uuid: '22222222-2222-2222-2222-222222222222',
+    cwd: '/tmp',
+    createdAt: now,
+    messages: [{ role: 'user', text: 'hi', time: now }],
+    goal: goalOf(events),
+  })
+
+  // active → Codex `active`
+  const active = JSON.parse(build([goalChange('active')]).trim().split('\n').find((l) => l.includes('thread_goal_updated')))
+  assert.equal(active.payload.type, 'thread_goal_updated')
+  assert.equal(active.payload.goal.status, 'active')
+  assert.equal(active.payload.goal.objective, '把目标带过去')
+  assert.equal(active.payload.threadId, '22222222-2222-2222-2222-222222222222')
+
+  // paused / blocked → Codex only knows active|paused
+  assert.equal(codexGoalSnapshot(goalOf([goalChange('paused')]), 'u').goal.status, 'paused')
+  assert.equal(codexGoalSnapshot(goalOf([goalChange('blocked')]), 'u').goal.status, 'paused')
+
+  // a completed goal is not re-exported as a live one
+  const completed = build([goalChange('complete')])
+  assert.equal(completed.includes('thread_goal_updated'), false)
+
+  // the last goal/change wins
+  assert.equal(goalOf([goalChange('complete'), goalChange('active')]).phase, 'active')
 })
 
 test('buildRolloutJsonl is parseable JSONL', () => {

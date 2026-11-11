@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const PROJECT = join(import.meta.dirname, '..')
 
@@ -21,7 +22,7 @@ test('state: per-item sync groups default on, override, clear-to-default', async
   const home = freshHome()
   try {
     const { readSyncGroup, effectiveItemSync, writeItemSync, writeSyncDefault, writeAllItemSync } =
-      await import(join(PROJECT, 'lib', 'state.js'))
+      await import(pathToFileURL(join(PROJECT, 'lib', 'state.js')).href)
     // untouched → everything follows the default (true)
     assert.equal(readSyncGroup('skill').default, true)
     assert.equal(effectiveItemSync('skill', 'pdf'), true)
@@ -57,8 +58,8 @@ test('skills: provider list() hides user-disabled entries', async () => {
     mkdirSync(join(skillsDir, 'beta'), { recursive: true })
     writeFileSync(join(skillsDir, 'alpha', 'SKILL.md'), '---\nname: alpha\ndescription: a\n---\nbody-a\n')
     writeFileSync(join(skillsDir, 'beta', 'SKILL.md'), '---\nname: beta\ndescription: b\n---\nbody-b\n')
-    const { registerCodexSkillProvider } = await import(join(PROJECT, 'lib', 'skill-provider.js'))
-    const { writeItemSync } = await import(join(PROJECT, 'lib', 'state.js'))
+    const { registerCodexSkillProvider } = await import(pathToFileURL(join(PROJECT, 'lib', 'skill-provider.js')).href)
+    const { writeItemSync } = await import(pathToFileURL(join(PROJECT, 'lib', 'state.js')).href)
 
     const control = { signal: new AbortController().signal, invalidate: () => {} }
     const provider = registerCodexSkillProvider(codexHome, {}, control, () => true)
@@ -106,8 +107,8 @@ FakeMcpClient.instances = []
 `)
     // Point the module resolver at the isolated fixture for this test.
     process.env.DSH_CX_SYNC_MCP_CLIENT_DIR = dirname(fakeDir)
-    const { startMcpMirror } = await import(join(PROJECT, 'lib', 'mcp.js'))
-    const { writeItemSync, effectiveItemSync } = await import(join(PROJECT, 'lib', 'state.js'))
+    const { startMcpMirror } = await import(pathToFileURL(join(PROJECT, 'lib', 'mcp.js')).href)
+    const { writeItemSync, effectiveItemSync } = await import(pathToFileURL(join(PROJECT, 'lib', 'state.js')).href)
 
     const mounted = []
     const ctx = {
@@ -161,7 +162,7 @@ test('commands: /codex-skills, /codex-skill all|one persist and report', async (
       plugin: () => ({ apply() {} }), // nested http plugin: stub, never applied
       systemPrompt: { section: () => {} },
     }
-    const plugin = await import(join(PROJECT, 'lib', 'index.js'))
+    const plugin = await import(pathToFileURL(join(PROJECT, 'lib', 'index.js')).href)
     plugin.apply(ctx, { codexHome })
 
     const raw = (inv) => ({ rawInput: inv })

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { zstdCompressSync } from 'node:zlib'
 import { parseCodexSession, isSubagentThread } from '../lib/codex-reader.mjs'
 import { buildDshEvents, deriveImportTitle } from '../lib/convert.mjs'
 
@@ -34,11 +35,11 @@ const ROLLOUT = [
   },
 ].map((e) => JSON.stringify(e)).join('\n') + '\n'
 
-test('codex reader strips control blocks and keeps real text', () => {
+test('codex reader strips control blocks and keeps real text', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cx-reader-'))
   const file = join(dir, 'rollout-test.jsonl')
   writeFileSync(file, ROLLOUT)
-  const { header, messages } = parseCodexSession(file)
+  const { header, messages } = await parseCodexSession(file)
   assert.equal(header.id, 'sess-1')
   assert.equal(messages.length, 3)
   // first user message: only the real prompt survives
@@ -49,11 +50,11 @@ test('codex reader strips control blocks and keeps real text', () => {
   assert.equal(messages[2].blocks[0].text, '要不要全局安装？')
 })
 
-test('convert: control-only user message opens no turn and never seeds the title', () => {
+test('convert: control-only user message opens no turn and never seeds the title', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cx-reader-'))
   const file = join(dir, 'rollout-test.jsonl')
   writeFileSync(file, ROLLOUT)
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   const events = buildDshEvents(messages, { toolEvents: true, titlePinned: true })
   const kinds = events.map((e) => e.type)
   // no turn/start before the first real user message
@@ -92,7 +93,7 @@ let n = 0
 const write = (file, text) => { writeFileSync(file, text); return file }
 const nextFile = (kind) => write(join(mkdtempSync(join(tmpdir(), 'cx-new-')), `${kind}-${++n}.jsonl`), '')
 
-test('new schema: tool call + real output fold into one assistant message with real result', () => {
+test('new schema: tool call + real output fold into one assistant message with real result', async () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '改一下 main.js' }]),
     msg('T2', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '我用编辑工具。' }]),
@@ -101,7 +102,7 @@ test('new schema: tool call + real output fold into one assistant message with r
     msg('T5', '2026-08-17T10:00:09Z', 'assistant', [{ type: 'output_text', text: '改好了。' }]),
   ]
   const file = nextFile('tools'); write(file, rolloutOf(events))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   // user, assistant(text), assistant(tool call+result), assistant(text)
   assert.equal(messages.length, 4)
   const toolMsg = messages[2]
@@ -126,7 +127,7 @@ test('new schema: tool call + real output fold into one assistant message with r
   assert.ok(written.data.message.content.every((b) => b.type !== 'tool-result'), 'tool-result block must not appear in assistant content')
 })
 
-test('new schema: oversized tool output is capped with a truncation note', () => {
+test('new schema: oversized tool output is capped with a truncation note', async () => {
   const big = 'y'.repeat(9000)
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '列目录' }]),
@@ -135,7 +136,7 @@ test('new schema: oversized tool output is capped with a truncation note', () =>
     msg('T4', '2026-08-17T10:00:09Z', 'assistant', [{ type: 'output_text', text: '太长我截断了。' }]),
   ]
   const file = nextFile('cap'); write(file, rolloutOf(events))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   const blocks = messages.flatMap((m) => m.blocks).filter((b) => b.type === 'tool-result')
   assert.equal(blocks.length, 1)
   const text = blocks[0].content[0].text
@@ -143,14 +144,14 @@ test('new schema: oversized tool output is capped with a truncation note', () =>
   assert.match(text, /…\[截断：源输出 9000 字符\]/)
 })
 
-test('new schema: reasoning summary_text arrays flatten to a string', () => {
+test('new schema: reasoning summary_text arrays flatten to a string', async () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: 'hi' }]),
     reason('T2', [{ type: 'summary_text', text: 'think step one' }]),
     msg('T3', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: 'ok' }]),
   ]
   const file = nextFile('reason-arr'); write(file, rolloutOf(events))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   const reasoning = messages[1].blocks.filter((b) => b.type === 'reasoning')
   assert.equal(reasoning[0].text, 'think step one')
   const events2 = buildDshEvents(messages, { toolEvents: true })
@@ -158,21 +159,21 @@ test('new schema: reasoning summary_text arrays flatten to a string', () => {
   assert.equal(typeof asst.data.message.content[0].text, 'string')
 })
 
-test('new schema: reasoning summaries merge into the pending assistant message', () => {
+test('new schema: reasoning summaries merge into the pending assistant message', async () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '1+1?' }]),
     reason('T2', '先心算，1+1=2'),
     msg('T3', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '等于 2。' }]),
   ]
   const file = nextFile('reason'); write(file, rolloutOf(events))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   assert.equal(messages.length, 3)
   const reasoning = messages[1].blocks.filter((b) => b.type === 'reasoning')
   assert.equal(reasoning.length, 1)
   assert.equal(reasoning[0].text, '先心算，1+1=2')
 })
 
-test('new schema: raw image fragments are stripped from user text', () => {
+test('new schema: raw image fragments are stripped from user text', async () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [
       { type: 'input_text', text: '# Files mentioned by the user:\n\n## 照片 1.jpg content' },
@@ -182,14 +183,97 @@ test('new schema: raw image fragments are stripped from user text', () => {
     msg('T2', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '我看到了。' }]),
   ]
   const file = nextFile('img'); write(file, rolloutOf(events))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   assert.equal(messages.length, 2)
   const userText = messages[0].blocks.map((b) => b.text).join('\n')
   assert.doesNotMatch(userText, /<image/, 'image fragments must be stripped')
   assert.match(userText, /# Files mentioned by the user:/)
 })
 
-test('legacy schema: tool_use blocks inside message content still map to tool-calls', () => {
+test('new schema: an activated skill wrapper is not imported as a user message', async () => {
+  // Codex hands `<skill>…SKILL.md…</skill>` to the model as a USER message, so
+  // without filtering it the whole skill body shows up in the transcript.
+  const skill = [
+    '<skill>',
+    '<name>zbwx-frontend-plugin-development</name>',
+    '<path>D:\\repo\\.agents\\skills\\x\\SKILL.md</path>',
+    '---',
+    'name: zbwx-frontend-plugin-development',
+    'description: implement or review plugins',
+    '---',
+    '# 开发约定',
+    '</skill>',
+  ].join('\n')
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: skill }]),
+    msg('T2', '2026-08-17T10:00:02Z', 'user', [{ type: 'input_text', text: '真正的问题' }]),
+    msg('T3', '2026-08-17T10:00:05Z', 'assistant', [{ type: 'output_text', text: '好的。' }]),
+  ]
+  const file = nextFile('skill'); write(file, rolloutOf(events))
+  const { messages } = await parseCodexSession(file)
+  assert.equal(messages.length, 2)
+  assert.deepEqual(messages[0].blocks, [{ type: 'text', text: '真正的问题' }])
+  assert.doesNotMatch(JSON.stringify(messages), /SKILL\.md/)
+})
+
+test('new schema: codex desktop envelopes are dropped, real content is kept', async () => {
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [
+      { type: 'input_text', text: '<codex_internal_context source="goal">\nContinue working toward the objective\n</codex_internal_context>' },
+      { type: 'input_text', text: '<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>' },
+      { type: 'input_text', text: '<in-app-browser-context source="ambient-ui-state">\nstuff\n</in-app-browser-context>' },
+      { type: 'input_text', text: '<no retained transcript delta entries>' },
+      { type: 'input_text', text: '帮我改一下这个页面' },
+    ]),
+    msg('T2', '2026-08-17T10:00:05Z', 'user', [
+      { type: 'input_text', text: '<send_user_message_question_reply> [{"questionItemId":"q1","answer":"选 A"}] </send_user_message_question_reply>' },
+    ]),
+    msg('T3', '2026-08-17T10:00:09Z', 'assistant', [
+      { type: 'output_text', text: '<proposed_plan>\n1. 改样式\n</proposed_plan>' },
+    ]),
+  ]
+  const file = nextFile('envelopes'); write(file, rolloutOf(events))
+  const { messages } = await parseCodexSession(file)
+  assert.equal(messages.length, 3)
+  assert.deepEqual(messages[0].blocks, [{ type: 'text', text: '帮我改一下这个页面' }])
+  // The user's answer to a question and the assistant's plan are real content.
+  assert.match(messages[1].blocks[0].text, /选 A/)
+  assert.match(messages[2].blocks[0].text, /proposed_plan/)
+})
+
+test('reader: the last thread_goal_updated becomes the session goal', async () => {
+  const goalEvent = (status, updatedAt) => ({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:00Z',
+    payload: {
+      type: 'thread_goal_updated',
+      threadId: 'sess-goal',
+      goal: {
+        threadId: 'sess-goal',
+        objective: '把目标模式带过去',
+        status,
+        tokensUsed: 1234,
+        timeUsedSeconds: 56,
+        createdAt: 1787000000,
+        updatedAt,
+      },
+    },
+  })
+  const file = nextFile('goal')
+  write(file, rolloutOf([
+    { type: 'session_meta', payload: { id: 'sess-goal', cwd: '/tmp/p', timestamp: '2026-08-17T09:59:00Z' } },
+    goalEvent('active', 1787000100),
+    goalEvent('paused', 1787000200),
+  ]))
+  const { header } = await parseCodexSession(file)
+  assert.equal(header.goal.status, 'paused', 'the last snapshot wins')
+  assert.equal(header.goal.objective, '把目标模式带过去')
+  assert.equal(header.goal.createdAt, 1787000000 * 1000, 'codex stores seconds')
+  assert.equal(header.goal.updatedAt, 1787000200 * 1000)
+  assert.equal(header.goal.tokensUsed, 1234)
+})
+
+test('legacy schema: tool_use blocks inside message content still map to tool-calls', async () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '读文件' }]),
     msg('T2', '2026-08-17T10:00:05Z', 'assistant', [
@@ -198,7 +282,7 @@ test('legacy schema: tool_use blocks inside message content still map to tool-ca
     ]),
   ]
   const file = nextFile('legacy'); write(file, rolloutOf(events))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   const toolCall = messages[1].blocks.find((b) => b.type === 'tool-call')
   assert.ok(toolCall)
   assert.equal(toolCall.id, 'call-7')
@@ -207,15 +291,54 @@ test('legacy schema: tool_use blocks inside message content still map to tool-ca
 })
 
 
-test('reader: parent_thread_id marks a sub-agent thread header', () => {
+test('reader: parent_thread_id marks a sub-agent thread header', async () => {
   const meta = { id: 'sess-sub', cwd: '/tmp', timestamp: '2026-08-17T10:00:00.000Z', parent_thread_id: 'sess-main', agent_nickname: 'Einstein' }
   const file = nextFile('subagent-marker')
   write(file, rolloutOf([{ type: 'session_meta', payload: meta }]))
-  const { header } = parseCodexSession(file)
+  const { header } = await parseCodexSession(file)
   assert.equal(header.parentThreadId, 'sess-main')
   assert.equal(header.agentNickname, 'Einstein')
   assert.equal(isSubagentThread(header), true)
   assert.equal(isSubagentThread({}), false)
+})
+
+test('reader: zstd-compressed rollout (.jsonl.zst) parses like the plain one', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cx-reader-zst-'))
+  const plain = join(dir, 'rollout-plain.jsonl')
+  const packed = join(dir, 'rollout-packed.jsonl.zst')
+  writeFileSync(plain, ROLLOUT)
+  writeFileSync(packed, zstdCompressSync(Buffer.from(ROLLOUT, 'utf8')))
+
+  const plainParsed = await parseCodexSession(plain)
+  const packedParsed = await parseCodexSession(packed)
+  assert.equal(packedParsed.header.id, 'sess-1')
+  assert.equal(packedParsed.messages.length, plainParsed.messages.length)
+  assert.deepEqual(
+    packedParsed.messages.map((m) => m.blocks),
+    plainParsed.messages.map((m) => m.blocks),
+  )
+})
+
+test('reader: multi-frame rollout keeps every frame (codex appends frames)', async () => {
+  // node's zstd decoder stops at the end of the first frame, so a rollout that
+  // was extended by appending a second frame must still be read to the end.
+  const lines = ROLLOUT.split('\n').filter((l) => l.length > 0)
+  const head = `${lines.slice(0, 2).join('\n')}\n`
+  const tail = `${lines.slice(2).join('\n')}\n`
+  const dir = mkdtempSync(join(tmpdir(), 'cx-reader-multi-'))
+  const file = join(dir, 'rollout-multi.jsonl.zst')
+  writeFileSync(file, Buffer.concat([
+    zstdCompressSync(Buffer.from(head, 'utf8')),
+    zstdCompressSync(Buffer.from(tail, 'utf8')),
+  ]))
+
+  const multi = await parseCodexSession(file)
+  const single = await parseCodexSession(write(join(dir, 'rollout-single.jsonl'), ROLLOUT))
+  assert.equal(multi.header.id, 'sess-1')
+  assert.deepEqual(
+    multi.messages.map((m) => m.blocks),
+    single.messages.map((m) => m.blocks),
+  )
 })
 
 // ═══ step/start…step/end pairing: token-meter replay contract.
@@ -244,7 +367,7 @@ function assertStepPairing(events) {
   assert.equal(open, null, 'log ends with an open step')
 }
 
-test('convert: every assistant message and tool event sits inside paired step markers', () => {
+test('convert: every assistant message and tool event sits inside paired step markers', async () => {
   const events = buildDshEvents(
     [
       { role: 'user', time: 1000, blocks: [{ type: 'text', text: 'q1' }] },
@@ -261,7 +384,7 @@ test('convert: every assistant message and tool event sits inside paired step ma
   assertStepPairing(events)
 })
 
-test('convert: consecutive assistant messages get one step each, closed at turn boundaries', () => {
+test('convert: consecutive assistant messages get one step each, closed at turn boundaries', async () => {
   const events = buildDshEvents(
     [
       { role: 'user', time: 10, blocks: [{ type: 'text', text: 'hi' }] },
@@ -282,7 +405,7 @@ test('convert: consecutive assistant messages get one step each, closed at turn 
 })
 
 
-test('function_call: preserves arguments and prefers them over legacy input', () => {
+test('function_call: preserves arguments and prefers them over legacy input', async () => {
   const args = '{"text":"standard function argument"}'
   const file = nextFile('function-arguments')
   write(file, rolloutOf([
@@ -293,13 +416,13 @@ test('function_call: preserves arguments and prefers them over legacy input', ()
       type: 'function_call_output', call_id: 'function-1', output: 'function result',
     } },
   ]))
-  const { messages } = parseCodexSession(file)
+  const { messages } = await parseCodexSession(file)
   const blocks = messages.flatMap(m => m.blocks)
   assert.equal(blocks.find(b => b.type === 'tool-call').arguments, args)
   assert.deepEqual(blocks.find(b => b.type === 'tool-result').content, [{ type: 'text', text: 'function result' }])
 })
 
-test('tool inputs: function arguments objects and empty strings; custom calls keep input', () => {
+test('tool inputs: function arguments objects and empty strings; custom calls keep input', async () => {
   const file = nextFile('tool-input-variants')
   write(file, rolloutOf([
     ...[
@@ -309,6 +432,6 @@ test('tool inputs: function arguments objects and empty strings; custom calls ke
       { type: 'custom_tool_call', call_id: 'custom', name: 'patch', input: 'custom input', arguments: 'wrong' },
     ].map(payload => ({ type: 'response_item', timestamp: '2026-08-17T10:00:01Z', payload })),
   ]))
-  const calls = parseCodexSession(file).messages.flatMap(m => m.blocks).filter(b => b.type === 'tool-call')
+  const calls = (await parseCodexSession(file)).messages.flatMap(m => m.blocks).filter(b => b.type === 'tool-call')
   assert.deepEqual(calls.map(b => b.arguments), ['{"text":"object"}', '', 'legacy input', 'custom input'])
 })

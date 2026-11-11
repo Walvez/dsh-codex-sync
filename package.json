@@ -1,6 +1,6 @@
 {
   "name": "dsh-codex-sync",
-  "version": "1.6.2",
+  "version": "1.9.0",
   "description": "Two-way Codex↔DSH bridge: skills from ~/.codex/skills, session import with workspace attach, live MCP mirroring of mcp_servers, and a Codex-side reverse MCP installer.",
   "keywords": [
     "dsh",
@@ -72,7 +72,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1 || 0.2.0-rc.2"
+    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1 || 0.2.0-rc.2 || 0.2.2-rc.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-mcp-client": {

@@ -1,5 +1,123 @@
 # Changelog
 
+## 1.9.0 — 2026-11-11
+
+- **Goal mode now survives the trip in both directions.**
+  - Codex → DSH: the reader picks up Codex's `event_msg/thread_goal_updated`
+    snapshots (the last one wins) and the importer replays them as the
+    `goal/change` events DSH's `ctx.goals` reads ("backed exclusively by the
+    owning session log"), so an unfinished Codex goal arrives **active** and a
+    paused one arrives paused. On re-import only the transition is appended, and
+    only when the phase actually changed.
+  - DSH → Codex: the exporter reads the session's last `goal/change` and writes a
+    `thread_goal_updated` snapshot into the rollout, so Codex shows the goal
+    again. `active`/`paused` map directly; a `blocked` goal exports as `paused`
+    (Codex's known statuses are only active/paused); a **completed** goal is not
+    re-exported as a live one.
+- Goal `objective`, `createdAt`/`updatedAt` and the goal id
+  (`goal-codex-<threadId>`, stable across re-imports) are preserved; Codex's
+  `tokensUsed`/`timeUsedSeconds` are not carried into DSH's `roundsStarted`
+  (different meaning).
+- Tests: reader goal snapshot, import (create + pause), re-import transition,
+  export snapshot + blocked/complete mapping. 77 tests total.
+
+## 1.8.5 — 2026-11-11
+
+- Filter the other Codex desktop envelopes that were imported as user messages:
+  `<codex_internal_context>`, `<guardian_tool_descriptions>`,
+  `<external_codex_apps_*>` (opened pages, streamed block edits),
+  `<in-app-browser-context>`, `<external_browser_tabs>`,
+  `<node_repl_review_evidence>`, `<heartbeat>`, and the
+  `<no retained transcript delta entries>` placeholder. The opener now also
+  matches tags that carry attributes (`<… source="goal">`).
+- Kept on purpose: `<proposed_plan>` (real assistant content) and
+  `<send_user_message_question_reply>` (carries the user's own answer).
+- Over the 1134 rollouts here, the envelopes that leaked into transcripts went
+  from ~8100 blocks to 0 (only those two kept families remain).
+
+## 1.8.4 — 2026-11-11
+
+- **Activated skills no longer land in the imported transcript.** Codex hands a
+  skill to the model as a user message wrapped in `<skill>…</skill>` (the whole
+  SKILL.md: frontmatter, path and body), and the reader only dropped a fixed list
+  of openers, so the skill text was imported as if the user had typed it.
+  `<skill>` / `<skills>` are now filtered like the other injections.
+- Verified over all 1132 rollouts here: 0 remaining `<skill>` blocks (one
+  imported chat had 20 of them).
+
+## 1.8.3 — 2026-11-11
+
+- Listen for `agent/created` instead of `agent/session-start`: this DSH build
+  has no `agent/session-start` event, so both startup hooks were silent no-ops.
+  The catalog event is `agent/created({ agent, source })` with
+  `SessionStartSource = 'startup' | 'resume' | 'clear' | 'compact'`.
+- Affected: the autoImport startup hook (it never imported) and the new
+  workspace-title migration hook; the latter now runs once per process.
+
+## 1.8.2 — 2026-11-11
+
+- **Workspaces are named after the Codex project, not the path.** Attaching an
+  imported session used to title its workspace `basename (~/…/path)`, so one
+  Codex project (which owns several repo roots) showed up under each repo's
+  folder name, with a path glued on. Titles are now `projects.name` from
+  `~/.codex/state_5.sqlite` (`zbwx-frontend-v2 (~/…)` → `zbwx-v2`), falling back
+  to the folder name alone — never a path.
+- Existing auto-generated titles are migrated at startup and on every attach
+  (`/attach-workspaces` included). Titles you renamed yourself are left alone.
+- New `test/attach-workspaces.test.mjs` covers project-name resolution, the
+  path-free fallback, the legacy-title migration and custom-title preservation.
+
+## 1.8.1 — 2026-11-11
+
+- **Importing no longer reloads the whole page.** The client used to call
+  `window.location.reload()` 2.5 s after a successful import (on both the HTTP
+  and command paths), which interrupted whatever you were reading. It now
+  re-fetches the plugin's own catalog so the rows flip to "imported", and offers
+  「刷新列表」/「Refresh list」 in the result panel for the sidebar, which the Host
+  owns and does not let a plugin refresh in place.
+- Removed the now-unused reload timer and its cleanup effect.
+
+## 1.8.0 — 2026-11-11
+
+- **Titles and project names now come from Codex's own state**
+  (`~/.codex/state_5.sqlite`): `threads.name` is the title the sidebar shows
+  (`threads.title` is often a pasted prompt), and `projects.name` +
+  `project_roots.path` give the project a chat belongs to. Previously titles
+  came from `session_index.jsonl` (which misses ~25% of threads and can be
+  stale) and projects were guessed from the cwd folder name, which split one
+  Codex project into several entries (e.g. `zbwx-v2` appeared per repo).
+- **Internal threads are no longer listed as chats**: Codex marks guardian
+  reviews (`{"subagent":{"other":"guardian"}}`, ~985 rows here) and spawned
+  sub-agents in `threads.source`; both are now hidden unless sub-agents are
+  requested, matching the Codex sidebar. Their nesting uses the recorded
+  `parent_thread_id`.
+- **The 256 MiB session cap is gone by default (now 2 GiB)**: the reader streams,
+  so the cap only hid real conversations. Two sessions here (388 MiB and 1.2 GB,
+  6090 and 8882 messages) previously never appeared in the list.
+- `doctor` reports the catalog source and the zstd/compressed session split.
+- New `test/codex-index.test.mjs` covers path normalization, title precedence,
+  project resolution (by id and longest root) and origin classification.
+
+## 1.7.1 — 2026-11-11
+
+- **Read zstd-compressed Codex rollouts** (`rollout-*.jsonl.zst`, what current Codex
+  Desktop writes). Inflating them uses the runtime's own `node:zlib` zstd decoder, so
+  no extra dependency and no conversion of Codex's data is needed. Multi-frame
+  rollouts (a rollout extended by appending a frame) are decoded frame by frame
+  instead of stopping at the first frame.
+- **Keep the Codex thread name on import**: titles come from
+  `~/.codex/session_index.jsonl` (`thread_name`) instead of falling back to the
+  first prompt.
+- **Stream rollouts instead of `readFileSync`**, so a large session can no longer hit
+  Node's string-length ceiling.
+- **Find the session-format migration packages inside the Desktop app on Windows**
+  (`process.resourcesPath` → `app.asar/dsh/node_modules`), which is required to
+  import into the current (v4) format on that platform.
+- Accept host `0.2.2-rc.1` in `peerDependencies`.
+- Tests: reader runs on the installed DSH packages (17 import-service tests green
+  against v0→v4), plus coverage for compressed and multi-frame rollouts and for
+  Windows-correct ESM imports in the test harness.
+
 ## 1.6.2 — 2026-10-05
 
 - Import sessions in the installed DSH current format and support handle-based persistence, incremental assistant replies, new turns, and idempotent re-imports (PR #3).
