@@ -22,12 +22,12 @@
   "main": "lib/index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Walvez/dsh-codex-sync.git"
+    "url": "git+https://github.com/nlsp60/dsh-codex-sync.git"
   },
   "bugs": {
-    "url": "https://github.com/Walvez/dsh-codex-sync/issues"
+    "url": "https://github.com/nlsp60/dsh-codex-sync/issues"
   },
-  "homepage": "https://github.com/Walvez/dsh-codex-sync",
+  "homepage": "https://github.com/nlsp60/dsh-codex-sync",
   "exports": {
     ".": {
       "default": "./lib/index.js"
