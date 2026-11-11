@@ -99,7 +99,7 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
 
   const lines = await importCodex(ctx, persistence, {}, root)
   const report = lines.join('\n')
-  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
+  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, busy 0, subagent-skipped 1/)
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
   assert.equal(metas.get(main)?.agentPreset, 'cordis', 'imported sessions resume under the working cordis preset')
@@ -153,6 +153,47 @@ test('import-codex: re-import follows a Codex goal that changed to paused', asyn
   assert.equal(goals[1].data.goal.revision, 2)
 })
 
+test('import-codex: a chat open in the GUI (active write handle) is skipped, not fatal', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-busy-'))
+  const busyId = makeSession(root, 'busy')
+  const freeId = makeSession(root, 'free')
+  const { persistence, ctx, store } = stubPersistence()
+  // Both already imported; both gained a Codex turn that must be appended.
+  store.set(busyId, [])
+  store.set(freeId, [])
+  appendMessages(root, 'busy', [{ role: 'user', text: 'user-busy-2' }])
+  appendMessages(root, 'free', [{ role: 'user', text: 'user-free-2' }])
+
+  // DSH keeps ONE write handle per Session id; an open chat owns it.
+  const realAppend = persistence.append.bind(persistence)
+  persistence.append = async (id, events) => {
+    if (id === busyId) {
+      const error = new Error(`session "${id}" is already owned by an active write handle`)
+      error.name = 'SessionAlreadyOwnedError'
+      throw error
+    }
+    return realAppend(id, events)
+  }
+
+  const lines = await importCodex(ctx, persistence, {}, root)
+  const report = lines.join('\n')
+  assert.match(report, /busy 1/, 'the busy session is counted, the batch is not aborted')
+  assert.match(report, /\[busy\] codex-sess-busy: 该对话正在 DSH 中打开/)
+  assert.match(report, /updated 1/, 'the other session still updated')
+  assert.equal(store.get(busyId).length, 0, 'busy session untouched')
+  assert.ok(store.get(freeId).length > 0, 'free session appended')
+})
+
+test('import-codex: other append failures still fail loud', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-flush2-'))
+  const id = makeSession(root, 'boom')
+  const { persistence, ctx, store } = stubPersistence()
+  store.set(id, [])
+  appendMessages(root, 'boom', [{ role: 'user', text: 'user-boom-2' }])
+  persistence.append = async () => { throw new Error('disk full') }
+  await assert.rejects(() => importCodex(ctx, persistence, {}, root), /disk full/)
+})
+
 test('catalog: nests sub-agents under parent and marks imported', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-'))
   const mainId = makeSession(root, 'main')
@@ -196,7 +237,7 @@ test('import-codex: dryRun lists candidates but writes nothing', async () => {
   const report = lines.join('\n')
   assert.match(report, /\[codex\] dry-run: no sessions will be written/)
   assert.ok(report.includes(`[would-import] ${main}`), 'dry-run lists the main session')
-  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
+  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, busy 0, subagent-skipped 1/)
   assert.equal(store.size, 0, 'dry-run must not create sessions')
 })
 

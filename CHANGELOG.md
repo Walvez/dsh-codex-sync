@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.1 — 2026-11-11
+
+- **Updating a chat that is open in DSH no longer aborts the whole import.**
+  DSH's JSONL backend keeps one write handle per Session id and refuses a second
+  (`session "…" is already owned by an active write handle`), which is exactly
+  what happens when the chat you are re-importing is open in the GUI. The
+  importer now retries once (the handle is released when the view switches) and
+  then records `[busy] …` + a hint instead of failing the batch; every other
+  append error still fails loud.
+- Result line reports `busy N` so a partial run is visible.
+
 ## 1.9.0 — 2026-11-11
 
 - **Goal mode now survives the trip in both directions.**
