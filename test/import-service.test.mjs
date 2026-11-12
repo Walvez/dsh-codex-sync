@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { importCodex, listImportCatalog } from '../lib/import-service.js'
 import { foldGoal } from '@deepseek-ai/dsh-goal'
+import { migrateToCurrent as migrateToCurrentReal } from '../lib/session-migrate.mjs'
 
 // Build a raw response_item event (NOT a string) so the file body below can be
 // JSON.stringify'd exactly once per line.
@@ -100,7 +101,7 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
 
   const lines = await importCodex(ctx, persistence, {}, root)
   const report = lines.join('\n')
-  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, busy 0, subagent-skipped 1/)
+  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, busy 0, migration-failed 0, subagent-skipped 1/)
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
   assert.equal(metas.get(main)?.agentPreset, 'standard', 'imported sessions use the standard preset, not 创造模式')
@@ -307,7 +308,7 @@ test('import-codex: dryRun lists candidates but writes nothing', async () => {
   const report = lines.join('\n')
   assert.match(report, /\[codex\] dry-run: no sessions will be written/)
   assert.ok(report.includes(`[would-import] ${main}`), 'dry-run lists the main session')
-  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, busy 0, subagent-skipped 1/)
+  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, busy 0, migration-failed 0, subagent-skipped 1/)
   assert.equal(store.size, 0, 'dry-run must not create sessions')
 })
 
@@ -770,4 +771,27 @@ test('import-codex: a question answer survives migration and passes the current 
   const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
   const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
   restoreReleasedV4Artifact({ header: metas.get(id), events: store.get(id) ?? [], inheritedEventCount: 0 }, KNOWN_SESSION_EVENT_TYPES)
+})
+
+test('import-codex: one session the migration cannot transform is skipped, the rest still import', async () => {
+  // The v2→v3 stage rejected `user-question-reply` and aborted the WHOLE batch;
+  // a single untransformable chat must now be reported and skipped instead.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-migskip-'))
+  const good = makeSession(root, 'good')
+  const bad = makeSession(root, 'bad')
+  const { persistence, ctx, store } = stubPersistence()
+
+  const lines = await importCodex(ctx, persistence, {
+    migrateToCurrent(header, events) {
+      if (header.id === bad) throw new Error('cannot safely transform unclassified message source')
+      return migrateToCurrentReal(header, events)
+    },
+  }, root)
+
+  const report = lines.join('\n')
+  assert.match(report, /\[skipped-migration\] codex-sess-bad: cannot safely transform unclassified message source/)
+  assert.match(report, /migration-failed 1/)
+  assert.match(report, /imported 1/, 'the other session still imported')
+  assert.ok(store.has(good), 'the healthy session was written')
+  assert.ok(!store.has(bad), 'the untransformable one was not written')
 })

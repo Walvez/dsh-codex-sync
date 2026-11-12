@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.8 — 2026-11-12
+
+- **One untransformable chat no longer aborts the whole import.** Until now a
+  single session the migration chain could not convert threw out of
+  `importCodex`, so nothing else in the batch was written (that is exactly how
+  1.10.6's reply-card regression killed an import of ~90 chats). The failure is
+  now per session: it is reported as
+  `[skipped-migration] <id>: <reason>`, counted as `migration-failed N` in the
+  result line, followed by a hint, and the remaining chats import normally.
+  The v0 fallback stays impossible — a v0 log cannot be written at all.
+- `options.migrateToCurrent` is an injectable seam so the skip path is covered by
+  a test (forced failure on one session, the other still imported). 99 tests.
+
 ## 1.10.7 — 2026-11-12
 
 - **Fixed: importing any chat with an answered question failed** with
