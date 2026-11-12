@@ -417,6 +417,35 @@ test('catalog: a Codex side chat (forked thread) is neither listed nor imported'
   assert.match(lines.join('\n'), /侧边聊天/)
 })
 
+test('catalog: 管理已同步 still lists side chats and orphaned imports so they stay deletable', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-manage-'))
+  makeSession(root, 'live')
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  // A side chat (forked) plus an import whose Codex thread is gone entirely.
+  writeFileSync(join(dir, 'rollout-side.jsonl'), [
+    { type: 'session_meta', payload: { id: 'sess-side', cwd: '/tmp/proj', timestamp: '2026-08-17T11:00:00.000Z', forked_from_id: 'sess-parent' } },
+    rawEvent({ type: 'message', id: 'm-side', role: 'user', content: [{ type: 'input_text', text: 'user-side-1' }] }),
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+  await importCodex(ctx, persistence, {}, root)
+
+  // Simulate the orphan: DSH holds a codex session Codex no longer has.
+  const orphanId = 'codex-gone-1111'
+  store.set(orphanId, [
+    { type: 'session/title', seq: 0, time: Date.now(), data: { title: '被 Codex 删除的会话' } },
+  ])
+
+  const manage = await listImportCatalog(persistence, { onlyImported: true }, root)
+  const ids = manage.projects.flatMap((p) => p.sessions).map((s) => s.id)
+  assert.ok(ids.includes(orphanId), 'orphaned import is listed for deletion')
+  const orphan = manage.projects.flatMap((p) => p.sessions).find((s) => s.id === orphanId)
+  assert.equal(orphan.title, '被 Codex 删除的会话', 'title comes from the DSH session log')
+
+  const importView = await listImportCatalog(persistence, {}, root)
+  const importIds = importView.projects.flatMap((p) => p.sessions).map((s) => s.id)
+  assert.ok(!importIds.includes('codex-sess-side'), 'the import view still hides side chats')
+})
+
 test('import-codex: writes the session in the installed current format, not v0 (issue #2)', async () => {
   // DSH persistence rejects older formats on write ("encodeCurrent requires
   // Session format v4" on DSH 0.10.x), so the importer must migrate the

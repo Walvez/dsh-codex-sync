@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.10.5 — 2026-11-12
+
+- **Fixed: 管理已同步 could not show some imported chats, so they were
+  undeletable.** 1.10.4 filtered Codex side chats out of the catalog, and the
+  manage view is catalog-driven — a side chat an older build had imported then
+  vanished from the list entirely (the reported case: `codex-01a1c47b…`). The
+  `only=imported` view now keeps side chats, and it also lists **orphaned
+  imports** — sessions this plugin wrote whose Codex thread no longer exists —
+  taking their title from the DSH session log. The import view keeps hiding side
+  chats.
+- Fixed a crash when grouping an orphan (no cwd → `cwd.length` on null).
+
 ## 1.10.4 — 2026-11-12
 
 - **Codex side chats are no longer synced or listed.** When Codex Desktop opens a
