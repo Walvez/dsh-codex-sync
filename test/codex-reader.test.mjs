@@ -273,6 +273,31 @@ test('reader: the last thread_goal_updated becomes the session goal', async () =
   assert.equal(header.goal.tokensUsed, 1234)
 })
 
+test('reader: a forked thread (codex side chat) is marked, a paginated segment is not', async () => {
+  // Codex Desktop's side chat: `forked_from_id` names the conversation it forked.
+  const forked = nextFile('forked')
+  write(forked, rolloutOf([
+    { type: 'session_meta', payload: { id: 'sess-child', cwd: '/tmp/p', timestamp: '2026-08-17T09:59:00Z', forked_from_id: 'sess-parent' } },
+  ]))
+  const child = (await parseCodexSession(forked)).header
+  assert.equal(child.forkedFromId, 'sess-parent')
+
+  // A paginated continuation segment carries `history_base` pointing at ITSELF;
+  // that is the same thread, not a side chat.
+  const segment = nextFile('segment')
+  write(segment, rolloutOf([
+    { type: 'session_meta', payload: { id: 'sess-self', cwd: '/tmp/p', timestamp: '2026-08-17T09:59:00Z', history_base: { thread_id: 'sess-self', end_ordinal: 12 } } },
+  ]))
+  assert.equal((await parseCodexSession(segment)).header.forkedFromId, undefined)
+
+  // `history_base` naming ANOTHER thread is a fork too.
+  const viaBase = nextFile('forked-base')
+  write(viaBase, rolloutOf([
+    { type: 'session_meta', payload: { id: 'sess-b', cwd: '/tmp/p', timestamp: '2026-08-17T09:59:00Z', history_base: { thread_id: 'sess-a' } } },
+  ]))
+  assert.equal((await parseCodexSession(viaBase)).header.forkedFromId, 'sess-a')
+})
+
 test('legacy schema: tool_use blocks inside message content still map to tool-calls', async () => {
   const events = [
     msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '读文件' }]),

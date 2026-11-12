@@ -392,6 +392,31 @@ test('catalog: paginated segments of one thread appear as ONE row', async () => 
   assert.ok(rows[0].lastTime >= Date.parse('2026-08-18T10:00:00.000Z'), 'span covers the newest segment')
 })
 
+test('catalog: a Codex side chat (forked thread) is neither listed nor imported', async () => {
+  // Codex Desktop forks a conversation into its own thread for a side chat; it
+  // repeats the parent's name and history, so syncing it duplicates the chat.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-side-'))
+  const main = makeSession(root, 'parent')
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  writeFileSync(join(dir, 'rollout-side.jsonl'), [
+    { type: 'session_meta', payload: { id: 'sess-side', cwd: '/tmp/proj', timestamp: '2026-08-17T11:00:00.000Z', forked_from_id: 'sess-parent' } },
+    rawEvent({ type: 'message', id: 'm-side', role: 'user', content: [{ type: 'input_text', text: 'user-side-1' }] }),
+    rawEvent({ type: 'message', id: 'a-side', role: 'assistant', content: [{ type: 'output_text', text: 'assistant-side-1' }] }),
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  const catalog = await listImportCatalog(persistence, {}, root)
+  const ids = catalog.projects.flatMap((p) => p.sessions).map((s) => s.id)
+  assert.ok(ids.includes(main), 'the real chat is listed')
+  assert.ok(!ids.includes('codex-sess-side'), 'the side chat is not listed')
+  assert.equal(catalog.skippedSideChat, 1)
+
+  const lines = await importCodex(ctx, persistence, {}, root)
+  assert.ok(!store.has('codex-sess-side'), 'the side chat is not imported')
+  assert.match(lines.join('\n'), /side-chat-skipped 1/)
+  assert.match(lines.join('\n'), /侧边聊天/)
+})
+
 test('import-codex: writes the session in the installed current format, not v0 (issue #2)', async () => {
   // DSH persistence rejects older formats on write ("encodeCurrent requires
   // Session format v4" on DSH 0.10.x), so the importer must migrate the

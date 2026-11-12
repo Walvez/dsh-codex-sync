@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.4 — 2026-11-12
+
+- **Codex side chats are no longer synced or listed.** When Codex Desktop opens a
+  conversation in its side panel it forks the thread: the new rollout carries
+  `session_meta.payload.forked_from_id` (and a `history_base` naming the parent),
+  the same name and the same history prefix — so the picker showed two rows with
+  one title (“继续 WeKnora 插件化集成”) and importing the fork duplicated the chat.
+  The reader now records `forkedFromId` (a paginated continuation segment points
+  `history_base` at ITSELF, which is the same thread, not a fork), and both the
+  catalog and the importer drop forked threads. The import result reports
+  `side-chat-skipped N` with a hint. On this machine that is 27 threads, and the
+  catalog now has no duplicate titles.
+- Note: a side chat imported by an older build stays in DSH; remove it with
+  管理已同步.
+
 ## 1.10.3 — 2026-11-12
 
 - **Fixed: 管理已同步 looked like it did nothing.** The host answers `ok: true`
