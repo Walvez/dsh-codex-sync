@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.10.1 — 2026-11-12
+
+- **Fixed: the import picker listed the same chat two or three times.** Codex
+  paginates one thread into several rollout files — the base
+  `rollout-<ts>-<uuid>.jsonl[.zst]` plus `rollout-<ts>-<uuid>_<fork>` segments
+  that carry the same `session_meta.payload.id` and only the delta turns. The
+  importer already merged them, but `listImportCatalog` built one row per FILE,
+  so those threads appeared once per segment (6 threads / 8 extra rows here).
+  Rows are now folded per thread id: one row, spanning first to newest segment,
+  with the later segment widening `lastTime` so the “有更新” (stale) flag stays
+  correct.
+
 ## 1.10.0 — 2026-11-12
 
 - **New: 管理已同步 (manage synced chats)** — a picker that lists the chats this

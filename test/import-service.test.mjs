@@ -369,6 +369,29 @@ test('import-codex: paginated rollout segments of one thread merge into a single
   assert.ok(users.some((t) => t.includes('user-main-seg')), 'continuation segment messages imported in the same session')
 })
 
+test('catalog: paginated segments of one thread appear as ONE row', async () => {
+  // The picker used to build a row per FILE, so a thread Codex continued into
+  // `rollout-<ts>-<uuid>_<fork>.jsonl` showed up two or three times with the
+  // same title. Segments share `session_meta.payload.id`, so they must fold.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-catalog-seg-'))
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  mkdirSync(dir, { recursive: true })
+  const segment = (name, at, text) => [
+    { type: 'session_meta', payload: { id: 'sess-seg', cwd: '/tmp/proj', timestamp: at, source: 'cli' } },
+    { type: 'response_item', timestamp: at, payload: { type: 'message', id: `m-${name}`, role: 'user', content: [{ type: 'input_text', text }] } },
+    { type: 'response_item', timestamp: at, payload: { type: 'message', id: `a-${name}`, role: 'assistant', content: [{ type: 'output_text', text: `a-${name}` }] } },
+  ]
+  writeFileSync(join(dir, 'rollout-seg.jsonl'), segment('base', '2026-08-17T10:00:00.000Z', 'base-ask').map((e) => JSON.stringify(e)).join('\n') + '\n')
+  writeFileSync(join(dir, 'rollout-seg_01a2.jsonl'), segment('fork', '2026-08-18T10:00:00.000Z', 'fork-ask').map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx } = stubPersistence()
+
+  const catalog = await listImportCatalog(persistence, {}, root)
+  const rows = catalog.projects.flatMap((p) => p.sessions)
+  assert.equal(rows.length, 1, 'one thread → one row')
+  assert.equal(rows[0].id, 'codex-sess-seg')
+  assert.ok(rows[0].lastTime >= Date.parse('2026-08-18T10:00:00.000Z'), 'span covers the newest segment')
+})
+
 test('import-codex: writes the session in the installed current format, not v0 (issue #2)', async () => {
   // DSH persistence rejects older formats on write ("encodeCurrent requires
   // Session format v4" on DSH 0.10.x), so the importer must migrate the
