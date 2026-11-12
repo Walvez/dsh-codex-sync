@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.10 — 2026-11-12
+
+- **A partial import now says so.** When the batch skipped sessions the
+  migration chain could not transform, the result page still showed a green
+  check and “导入完成”, so a run that imported 1 of 90 chats looked like success.
+  The panel now switches to a warning state (`migration-failed > 0`): warning
+  icon, title 「部分会话未导入」 / “Some chats were not imported”, and the
+  `[skipped-migration]` lines plus the hint, on a warning-tinted block.
+- Reads the count from the host report (`migration-failed N`) for both the HTTP
+  path and the `/import-codex` command fallback.
+
 ## 1.10.9 — 2026-11-12
 
 - **Memory citations no longer leak into imported transcripts.**
