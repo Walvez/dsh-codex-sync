@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.2 — 2026-11-12
+
+- **Fixed: an imported chat could silently stay without a workspace, so the
+  sidebar showed it nowhere.** `workspace.attachSession()` returns without error
+  when the registry filters the id back out (an archived Session never reaches
+  `workspace.sessionIds`), and the importer counted that as success. Attach is
+  now verified against `workspace.sessionIds`, retried once (the header index can
+  lag right after a write), and every session that stays ungrouped is reported as
+  `[ungrouped] <id> → <workspace>: <reason>` plus a hint to run
+  `/attach-workspaces` after closing the chat.
+- Note: DSH allows two workspaces with the same display title (different paths),
+  so one Codex project that spans several repo roots can show up as several
+  same-named groups; the chat may sit in the sibling group rather than the one
+  you were looking at.
+
 ## 1.10.1 — 2026-11-12
 
 - **Fixed: the import picker listed the same chat two or three times.** Codex

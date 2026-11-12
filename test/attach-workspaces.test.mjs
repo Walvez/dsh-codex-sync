@@ -41,6 +41,7 @@ function fakeRegistry() {
       path,
       title,
       attached: [],
+      get sessionIds() { return workspace.attached },
       setTitle: async (next) => { workspace.title = next },
       attachSession: async (id) => { workspace.attached.push(id) },
     }
@@ -108,6 +109,36 @@ test('attach renames only auto-generated titles, leaving custom ones alone', asy
     projectNameOf: (cwd) => codexProjectNameForPath(index, cwd),
   })
   assert.equal(workspace.title, '我的项目')
+})
+
+test('attach reports a session the workspace refuses to store (silent no-op)', async () => {
+  // `attachSession` resolves and returns without error when the registry filters
+  // the id back out (an archived Session never reaches `workspace.sessionIds`).
+  // That silent no-op is exactly "imported fine but nowhere in the sidebar".
+  const home = codexHomeWithProject()
+  invalidateCodexIndex(home)
+  const index = loadCodexIndex(home)
+  const registry = fakeRegistry()
+  registry.create = async (path, title) => {
+    const workspace = {
+      path,
+      title,
+      attached: [],
+      get sessionIds() { return [] },
+      setTitle: async (next) => { workspace.title = next },
+      attachSession: async () => {},
+    }
+    return workspace
+  }
+  const ctx = { get: (name) => (name === 'workspaceRegistry' ? registry : undefined) }
+
+  const lines = await attachSessionsToWorkspaces(ctx, [{ id: 'codex-archived', cwd: 'D:/ws/ZBWX/2.0/zbwx-frontend-v2' }], {
+    projectNameOf: (cwd) => codexProjectNameForPath(index, cwd),
+  })
+  const report = lines.join('\n')
+  assert.match(report, /\[ungrouped\] codex-archived/)
+  assert.match(report, /归档/, 'names the likely cause')
+  assert.match(report, /\/attach-workspaces/, 'tells the user how to retry')
 })
 
 test('unifyWorkspaceTitles strips path-form titles but keeps custom ones', async () => {
