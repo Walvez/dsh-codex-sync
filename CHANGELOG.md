@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.9 — 2026-11-12
+
+- **Memory citations no longer leak into imported transcripts.**
+  `<oai-mem-citation><citation_entries>MEMORY.md:405-407|note=[…]</citation_entries>…`
+  is a Codex tooling block, but unlike the other envelopes it is **appended to
+  real content** (`… 已完成。\n<oai-mem-citation>…`), so the leading-tag filter
+  could not see it — it showed up verbatim at the end of imported answers and as
+  a standalone user block. The reader now cuts the envelope out of the middle of
+  a text block and drops the block when nothing else remained.
+  Measured on this machine: 259 of 1287 rollouts carry the block (417 user, 147
+  assistant, 49 developer occurrences); after the fix, 125 parsed rollouts with
+  citations leak **0**.
+- Tests: appended citation stripped from an answer, citation-only message
+  dropped. 100 tests total.
+
 ## 1.10.8 — 2026-11-12
 
 - **One untransformable chat no longer aborts the whole import.** Until now a

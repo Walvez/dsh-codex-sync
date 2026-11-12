@@ -222,6 +222,7 @@ test('new schema: codex desktop envelopes are dropped, real content is kept', as
       { type: 'input_text', text: '<codex_internal_context source="goal">\nContinue working toward the objective\n</codex_internal_context>' },
       { type: 'input_text', text: '<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>' },
       { type: 'input_text', text: '<in-app-browser-context source="ambient-ui-state">\nstuff\n</in-app-browser-context>' },
+      { type: 'input_text', text: '<oai-mem-citation>\n<citation_entries>\nMEMORY.md:405-407|note=[ammo scope and validation boundaries]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>' },
       { type: 'input_text', text: '<no retained transcript delta entries>' },
       { type: 'input_text', text: '帮我改一下这个页面' },
     ]),
@@ -459,4 +460,28 @@ test('tool inputs: function arguments objects and empty strings; custom calls ke
   ]))
   const calls = (await parseCodexSession(file)).messages.flatMap(m => m.blocks).filter(b => b.type === 'tool-call')
   assert.deepEqual(calls.map(b => b.arguments), ['{"text":"object"}', '', 'legacy input', 'custom input'])
+})
+
+test('reader: an appended memory citation is cut out of real assistant text', async () => {
+  // Codex appends `<oai-mem-citation>…</oai-mem-citation>` AFTER real content, so
+  // a leading-tag filter cannot see it and the imported transcript showed the
+  // whole envelope. It must be removed while the answer survives.
+  const events = [
+    msg('T1', '2026-08-17T10:00:01Z', 'user', [{ type: 'input_text', text: '部署完成了吗？' }]),
+    msg('T2', '2026-08-17T10:00:06Z', 'assistant', [{
+      type: 'output_text',
+      text: '测试平台首页可访问，AI 服务本地制品已构建完成。\n\n<oai-mem-citation>\n<citation_entries>\nMEMORY.md:405-407|note=[ammo scope and validation boundaries]\n</citation_entries>\n<rollout_ids>\n</rollout_ids>\n</oai-mem-citation>',
+    }]),
+    msg('T3', '2026-08-17T10:00:09Z', 'assistant', [{
+      type: 'output_text',
+      text: '<oai-mem-citation>\n<citation_entries>\nMEMORY.md:1-2|note=[x]\n</citation_entries>\n</oai-mem-citation>',
+    }]),
+  ]
+  const file = nextFile('mem-citation'); write(file, rolloutOf(events))
+  const { messages } = await parseCodexSession(file)
+  assert.equal(messages.length, 2, 'citation-only message is dropped entirely')
+  const answer = messages[1].blocks[0].text
+  assert.match(answer, /AI 服务本地制品已构建完成/)
+  assert.ok(!answer.includes('oai-mem-citation'), 'no envelope left in the answer')
+  assert.ok(!answer.includes('MEMORY.md'), 'no citation entries left in the answer')
 })
