@@ -102,3 +102,49 @@ test('multiple consecutive user turns each open their own leading step', () => {
     assert.equal(kinds[i - 1], 'step/start', `user/message at ${i} preceded by step/start`)
   }
 })
+
+test('convert: a Codex question-reply envelope becomes a rendered answer card', () => {
+  const item = {
+    questionItemId: '["request_user_input_async","call_4326ec8a195049adb5882d6e601f5425",0]',
+    question: '是否允许 ai-service 持有专用 manage_channels 凭据？',
+    answer: '允许专用 manage_channels 凭据（推荐）',
+  }
+  // Codex stores the answer as markup; DSH only renders a card when the message
+  // says it is a question reply, so the importer must translate it.
+  const envelope = '<send_user_message_question_reply>\n' + JSON.stringify([item]) + '\n</send_user_message_question_reply>\n'
+  const events = buildDshEvents([
+    { role: 'user', time: 1000, blocks: [{ type: 'text', text: envelope }] },
+    { role: 'assistant', time: 2000, blocks: [{ type: 'text', text: '收到' }] },
+  ], { toolEvents: true })
+
+  const user = events.find((e) => e.type === 'user/message')
+  assert.equal(user.surfaceOp, 'append', 'the reply card reads append-origin messages')
+  assert.deepEqual(user.data.source, {
+    kind: 'user-question-reply',
+    callId: 'call_4326ec8a195049adb5882d6e601f5425',
+    outcome: 'answered',
+  })
+  const payload = JSON.parse(user.data.content[0].text)
+  assert.equal(payload.questions[0].question, item.question)
+  assert.deepEqual(payload.answers[0].selected, [item.answer])
+  assert.ok(!JSON.stringify(user.data.content).includes('send_user_message_question_reply'), 'no raw markup left')
+  assertSurfaceInsideSteps(events)
+})
+
+test('convert: a skipped question answer and plain text keep their own shapes', () => {
+  const skipped = {
+    questionItemId: '["request_user_input_async","call_skip",0]',
+    question: '要发布到哪个环境？',
+    answer: '',
+  }
+  const events = buildDshEvents([
+    { role: 'user', time: 1000, blocks: [{ type: 'text', text: '<send_user_message_question_reply>' + JSON.stringify([skipped]) + '</send_user_message_question_reply>' }] },
+    { role: 'user', time: 2000, blocks: [{ type: 'text', text: '普通提问' }] },
+  ], { toolEvents: true })
+
+  const replies = events.filter((e) => e.type === 'user/message')
+  assert.equal(replies[0].data.source.kind, 'user-question-reply')
+  assert.deepEqual(JSON.parse(replies[0].data.content[0].text).answers[0].selected, [], 'a skipped answer selects nothing')
+  assert.deepEqual(replies[1].data.source, { kind: 'user' }, 'plain text stays a normal user message')
+  assert.equal(replies[1].data.content[0].text, '普通提问')
+})

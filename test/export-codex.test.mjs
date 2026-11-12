@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildRolloutJsonl, codexGoalSnapshot, dshEventsToCodexMessages, exportToCodex, goalOf, listExportCatalog, titleOf } from '../lib/export-codex.js'
+import { buildRolloutJsonl, codexGoalSnapshot, codexQuestionReplyText, dshEventsToCodexMessages, exportToCodex, goalOf, listExportCatalog, titleOf } from '../lib/export-codex.js'
+import { questionReplyPayload } from '../lib/convert.mjs'
 
 test('dshEventsToCodexMessages keeps user and assistant text', () => {
   const msgs = dshEventsToCodexMessages([
@@ -374,4 +375,52 @@ test('listExportCatalog & exportToCodex: handle unchanged, updated, and missing 
   const dryLines = await exportToCodex(persistence, { ids: ['codex-codex-uuid-1'], dryRun: true }, home)
   assert.match(dryLines.join('\n'), /\[would-export\] codex-codex-uuid-1  4 messages -> .* \(new copy; original Codex thread not overwritten\)/)
   assert.match(dryLines.join('\n'), /would-export 1, skipped 0, empty 0/)
+})
+
+test('export: a DSH question answer is written as the Codex reply envelope', () => {
+  const callId = 'call_4326ec8a195049adb5882d6e601f5425'
+  const questionId = '["request_user_input_async","call_4326ec8a195049adb5882d6e601f5425",0]'
+  const event = {
+    type: 'user/message',
+    time: 100,
+    surfaceOp: 'append',
+    data: {
+      role: 'user',
+      id: 'm-1',
+      source: { kind: 'user-question-reply', callId, outcome: 'answered' },
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          questions: [{ id: questionId, question: '是否允许专用凭据？' }],
+          answers: [{ id: questionId, selected: ['允许'], custom: '' }],
+        }),
+      }],
+    },
+  }
+
+  const text = codexQuestionReplyText(event)
+  assert.ok(text.startsWith('<send_user_message_question_reply>'), 'codex reads this envelope')
+  assert.ok(text.trimEnd().endsWith('</send_user_message_question_reply>'))
+  assert.ok(!text.includes('"questions"'), 'the DSH JSON must not leak into the rollout')
+  const items = JSON.parse(text.split('\n')[1])
+  assert.deepEqual(items, [{ questionItemId: questionId, question: '是否允许专用凭据？', answer: '允许' }])
+
+  const msgs = dshEventsToCodexMessages([event])
+  assert.equal(msgs.length, 1)
+  assert.equal(msgs[0].text, text, 'the reply is exported as one user message')
+
+  // Round trip: the exported envelope imports back as the same answered card.
+  const back = questionReplyPayload([{ type: 'text', text }])
+  const payload = JSON.parse(back.content[0].text)
+  assert.equal(back.callId, callId)
+  assert.equal(payload.questions[0].id, questionId)
+  assert.equal(payload.questions[0].question, '是否允许专用凭据？')
+  assert.deepEqual(payload.answers[0].selected, ['允许'])
+})
+
+test('export: a plain user message still exports as plain text', () => {
+  const msgs = dshEventsToCodexMessages([
+    { type: 'user/message', time: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '普通提问' }] } },
+  ])
+  assert.deepEqual(msgs, [{ role: 'user', text: '普通提问', time: 1 }])
 })

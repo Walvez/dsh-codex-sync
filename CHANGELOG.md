@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.10.6 — 2026-11-12
+
+- **Question answers survive the round trip in both directions.**
+  - Codex → DSH: Codex stores an answer as bare markup
+    (`<send_user_message_question_reply>[{questionItemId, question, answer}]`),
+    which DSH printed as source text. The converter now recognises that envelope
+    and emits a `user/message` with `source.kind = 'user-question-reply'` plus the
+    `{questions, answers}` JSON DSH's user-questions UI reads, so it renders as an
+    answered-question card (the Host folds exactly this shape to settle a
+    question).
+  - DSH → Codex: `dshEventsToCodexMessages` writes that card back as the Codex
+    envelope instead of the raw JSON, rebuilding `questionItemId` as
+    `["request_user_input_async","call_…",<index>]` so a re-import yields the same
+    card.
+  - Verified on a real rollout (234 messages): 2 answer cards, no markup left;
+    round trip keeps callId, question id, question and answer identical.
+- Tests: envelope → card (incl. a skipped answer and plain text staying plain),
+  card → envelope, and the full round trip. 97 total.
+
 ## 1.10.5 — 2026-11-12
 
 - **Fixed: 管理已同步 could not show some imported chats, so they were
