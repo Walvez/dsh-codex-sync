@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.2 — 2026-11-12
+
+- **Imported chats no longer land in 创造模式 (the `cordis` agent preset).**
+  The import hardcoded `agentPreset: 'cordis'` in the Session header, so every
+  chat synced from Codex opened in DSH's plugin-authoring preset. Imports now
+  default to `standard` (标准模式) and accept a preset override:
+  `config.importAgentPreset`, or `/import-codex --preset ptc`. The same default
+  is used by `lib/dsh-writer.mjs` for CLI-side writes.
+  A preset is fixed at session creation, so chats imported by an older version
+  must be deleted and re-imported to change it.
+
 ## 1.9.1 — 2026-11-11
 
 - **Updating a chat that is open in DSH no longer aborts the whole import.**

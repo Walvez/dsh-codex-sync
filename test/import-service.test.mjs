@@ -102,8 +102,22 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
   assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, busy 0, subagent-skipped 1/)
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
-  assert.equal(metas.get(main)?.agentPreset, 'cordis', 'imported sessions resume under the working cordis preset')
+  assert.equal(metas.get(main)?.agentPreset, 'standard', 'imported sessions use the standard preset, not 创造模式')
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
+})
+
+test('import-codex: the imported agent preset is selectable', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-preset-'))
+  const id = makeSession(root, 'preset')
+  const { persistence, ctx, metas } = stubPersistence()
+
+  await importCodex(ctx, persistence, { agentPreset: 'ptc' }, root)
+  assert.equal(metas.get(id)?.agentPreset, 'ptc', 'explicit preset wins')
+
+  const other = makeSession(root, 'preset2')
+  const second = stubPersistence()
+  await importCodex(second.ctx, second.persistence, {}, root)
+  assert.equal(second.metas.get(other)?.agentPreset, 'standard', 'default stays standard')
 })
 
 test('import-codex: an unfinished Codex goal becomes an active DSH goal', async () => {
