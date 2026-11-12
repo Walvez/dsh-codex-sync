@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.7 — 2026-11-12
+
+- **Fixed: importing any chat with an answered question failed** with
+  `cannot safely transform unclassified message source`. The v2→v3 migration
+  stage validates `source.kind` against a closed set that does not contain
+  `user-question-reply`, while the *current* (v4) write gate does accept it — so
+  1.10.6's card shape broke the v0→v4 chain. The importer now writes those
+  messages through the migration as plain `user` messages and restores the reply
+  kind on the migrated events (matched by message id), which the current gate
+  validates and the questions projection reads.
+- Re-imported the thread that failed (`codex-01a1b4be…`): 6262 messages →
+  60893 events, **48 answer cards**, no migration error.
+- Test: import a reply envelope end to end, assert the stored source survived and
+  the log still encodes/restores in the installed format. 98 tests total.
+
 ## 1.10.6 — 2026-11-12
 
 - **Question answers survive the round trip in both directions.**

@@ -738,3 +738,36 @@ test('import-codex: a failed flush surfaces instead of reporting success', async
   )
   assert.deepEqual(ops, ['append', 'flush', 'close'], 'cleanup attempted before surfacing the error')
 })
+
+test('import-codex: a question answer survives migration and passes the current write gate', async () => {
+  // Regression: the v2→v3 stage rejects unknown `source.kind` values
+  // ("cannot safely transform unclassified message source"), which aborted the
+  // whole import once answers were converted to reply cards.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-reply-'))
+  const id = makeSession(root, 'reply')
+  const item = {
+    questionItemId: '["request_user_input_async","call_4326ec8a195049adb5882d6e601f5425",0]',
+    question: '是否允许专用 manage_channels 凭据？',
+    answer: '允许专用 manage_channels 凭据（推荐）',
+  }
+  appendMessages(root, 'reply', [
+    { role: 'user', text: '<send_user_message_question_reply>\n' + JSON.stringify([item]) + '\n</send_user_message_question_reply>\n' },
+    { role: 'assistant', text: 'assistant-reply-2' },
+  ])
+  const { persistence, ctx, store, metas } = stubPersistence()
+
+  await importCodex(ctx, persistence, {}, root)
+  const reply = (store.get(id) ?? []).find((e) => e.type === 'user/message' && e.data?.source?.kind === 'user-question-reply')
+  assert.ok(reply !== undefined, 'the answer is stored as a reply card, not plain text')
+  assert.equal(reply.data.source.callId, 'call_4326ec8a195049adb5882d6e601f5425')
+  assert.equal(reply.surfaceOp, 'append')
+  const payload = JSON.parse(reply.data.content[0].text)
+  assert.deepEqual(payload.answers[0].selected, [item.answer])
+
+  // The written log must still be writable/readable in the installed format.
+  const { sessionFormatCatalog } = await import('@deepseek-ai/dsh-session-format-catalog')
+  for (const event of store.get(id) ?? []) sessionFormatCatalog.encodeCurrentEvent(event)
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  restoreReleasedV4Artifact({ header: metas.get(id), events: store.get(id) ?? [], inheritedEventCount: 0 }, KNOWN_SESSION_EVENT_TYPES)
+})
