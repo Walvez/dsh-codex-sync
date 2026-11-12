@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.3 — 2026-11-12
+
+- **Fixed: 管理已同步 looked like it did nothing.** The host answers `ok: true`
+  even when every id was refused (the usual reason: the chat is open in DSH, so
+  the Host holds its write handle and refuses deletion), and the panel ignored
+  the returned lines — so a refused delete displayed “已删除已同步对话”. The
+  result view now shows the host's report (`[deleted] …` / `[refused] …`) and
+  says “没有删除任何会话” when nothing was removed, so the reason is visible.
+  Verified against the running Host: deleting an open chat returns
+  `[refused] … : 对话正在 DSH 中打开，关闭它之后才能删除`.
+
 ## 1.10.2 — 2026-11-12
 
 - **Fixed: an imported chat could silently stay without a workspace, so the
