@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildRolloutJsonl, dshEventsToCodexMessages, exportToCodex, listExportCatalog, titleOf } from '../lib/export-codex.js'
+import { buildRolloutJsonl, codexGoalSnapshot, codexQuestionReplyText, dshEventsToCodexMessages, exportToCodex, goalOf, listExportCatalog, titleOf } from '../lib/export-codex.js'
+import { questionReplyPayload } from '../lib/convert.mjs'
 
 test('dshEventsToCodexMessages keeps user and assistant text', () => {
   const msgs = dshEventsToCodexMessages([
@@ -67,6 +68,49 @@ test('exportToCodex writes a session_meta + response_item jsonl', async () => {
   assert.ok(kinds.includes('event_msg:user_message'))
   const userItem = rows.find((r) => r.payload?.type === 'user_message')
   assert.equal(userItem.payload.message, 'hi')
+})
+
+test('buildRolloutJsonl carries goal mode as a thread_goal_updated snapshot', () => {
+  const now = Date.parse('2026-01-01T00:00:00Z')
+  const goalChange = (phase, extra = {}) => ({
+    type: 'goal/change',
+    time: now,
+    data: {
+      kind: 'goal/change',
+      version: 1,
+      operation: 'create',
+      goal: { id: 'goal-1', revision: 1, objective: '把目标带过去', phase, maxGoalRounds: 256 },
+      roundsStarted: 0,
+      createdAt: now,
+      updatedAt: now,
+      ...extra,
+    },
+  })
+  const build = (events) => buildRolloutJsonl({
+    uuid: '22222222-2222-2222-2222-222222222222',
+    cwd: '/tmp',
+    createdAt: now,
+    messages: [{ role: 'user', text: 'hi', time: now }],
+    goal: goalOf(events),
+  })
+
+  // active → Codex `active`
+  const active = JSON.parse(build([goalChange('active')]).trim().split('\n').find((l) => l.includes('thread_goal_updated')))
+  assert.equal(active.payload.type, 'thread_goal_updated')
+  assert.equal(active.payload.goal.status, 'active')
+  assert.equal(active.payload.goal.objective, '把目标带过去')
+  assert.equal(active.payload.threadId, '22222222-2222-2222-2222-222222222222')
+
+  // paused / blocked → Codex only knows active|paused
+  assert.equal(codexGoalSnapshot(goalOf([goalChange('paused')]), 'u').goal.status, 'paused')
+  assert.equal(codexGoalSnapshot(goalOf([goalChange('blocked')]), 'u').goal.status, 'paused')
+
+  // a completed goal is not re-exported as a live one
+  const completed = build([goalChange('complete')])
+  assert.equal(completed.includes('thread_goal_updated'), false)
+
+  // the last goal/change wins
+  assert.equal(goalOf([goalChange('complete'), goalChange('active')]).phase, 'active')
 })
 
 test('buildRolloutJsonl is parseable JSONL', () => {
@@ -331,4 +375,52 @@ test('listExportCatalog & exportToCodex: handle unchanged, updated, and missing 
   const dryLines = await exportToCodex(persistence, { ids: ['codex-codex-uuid-1'], dryRun: true }, home)
   assert.match(dryLines.join('\n'), /\[would-export\] codex-codex-uuid-1  4 messages -> .* \(new copy; original Codex thread not overwritten\)/)
   assert.match(dryLines.join('\n'), /would-export 1, skipped 0, empty 0/)
+})
+
+test('export: a DSH question answer is written as the Codex reply envelope', () => {
+  const callId = 'call_4326ec8a195049adb5882d6e601f5425'
+  const questionId = '["request_user_input_async","call_4326ec8a195049adb5882d6e601f5425",0]'
+  const event = {
+    type: 'user/message',
+    time: 100,
+    surfaceOp: 'append',
+    data: {
+      role: 'user',
+      id: 'm-1',
+      source: { kind: 'user-question-reply', callId, outcome: 'answered' },
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          questions: [{ id: questionId, question: '是否允许专用凭据？' }],
+          answers: [{ id: questionId, selected: ['允许'], custom: '' }],
+        }),
+      }],
+    },
+  }
+
+  const text = codexQuestionReplyText(event)
+  assert.ok(text.startsWith('<send_user_message_question_reply>'), 'codex reads this envelope')
+  assert.ok(text.trimEnd().endsWith('</send_user_message_question_reply>'))
+  assert.ok(!text.includes('"questions"'), 'the DSH JSON must not leak into the rollout')
+  const items = JSON.parse(text.split('\n')[1])
+  assert.deepEqual(items, [{ questionItemId: questionId, question: '是否允许专用凭据？', answer: '允许' }])
+
+  const msgs = dshEventsToCodexMessages([event])
+  assert.equal(msgs.length, 1)
+  assert.equal(msgs[0].text, text, 'the reply is exported as one user message')
+
+  // Round trip: the exported envelope imports back as the same answered card.
+  const back = questionReplyPayload([{ type: 'text', text }])
+  const payload = JSON.parse(back.content[0].text)
+  assert.equal(back.callId, callId)
+  assert.equal(payload.questions[0].id, questionId)
+  assert.equal(payload.questions[0].question, '是否允许专用凭据？')
+  assert.deepEqual(payload.answers[0].selected, ['允许'])
+})
+
+test('export: a plain user message still exports as plain text', () => {
+  const msgs = dshEventsToCodexMessages([
+    { type: 'user/message', time: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '普通提问' }] } },
+  ])
+  assert.deepEqual(msgs, [{ role: 'user', text: '普通提问', time: 1 }])
 })

@@ -11,6 +11,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { importCodex, listImportCatalog } from '../lib/import-service.js'
+import { foldGoal } from '@deepseek-ai/dsh-goal'
+import { migrateToCurrent as migrateToCurrentReal } from '../lib/session-migrate.mjs'
 
 // Build a raw response_item event (NOT a string) so the file body below can be
 // JSON.stringify'd exactly once per line.
@@ -99,11 +101,168 @@ test('import-codex: sub-agent threads are filtered by default', async () => {
 
   const lines = await importCodex(ctx, persistence, {}, root)
   const report = lines.join('\n')
-  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
+  assert.match(report, /\[codex\] result: imported 1, updated 0, skipped 0, empty 0, busy 0, migration-failed 0, subagent-skipped 1/)
   assert.ok(store.has(main), 'main session imported')
   assert.ok(!store.has(sub), 'sub-agent thread must NOT be imported by default')
-  assert.equal(metas.get(main)?.agentPreset, 'cordis', 'imported sessions resume under the working cordis preset')
+  assert.equal(metas.get(main)?.agentPreset, 'standard', 'imported sessions use the standard preset, not 创造模式')
   assert.match(report, /--include-subagents/, 'report hints the opt-in flag')
+})
+
+test('import-codex: the imported agent preset is selectable', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-preset-'))
+  const id = makeSession(root, 'preset')
+  const { persistence, ctx, metas } = stubPersistence()
+
+  await importCodex(ctx, persistence, { agentPreset: 'ptc' }, root)
+  assert.equal(metas.get(id)?.agentPreset, 'ptc', 'explicit preset wins')
+
+  const other = makeSession(root, 'preset2')
+  const second = stubPersistence()
+  await importCodex(second.ctx, second.persistence, {}, root)
+  assert.equal(second.metas.get(other)?.agentPreset, 'standard', 'default stays standard')
+})
+
+test('import-codex: an unfinished Codex goal becomes an active DSH goal', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goal-'))
+  const id = makeSession(root, 'goal')
+  // Codex writes one snapshot per goal mutation; the last one (paused) wins.
+  appendFileSync(join(root, 'sessions', '2026', '08', '17', 'rollout-goal.jsonl'), [
+    { type: 'event_msg', timestamp: '2026-08-17T10:00:02.000Z', payload: { type: 'thread_goal_updated', threadId: 'sess-goal', goal: { threadId: 'sess-goal', objective: '把插件适配做完', status: 'active', createdAt: 1787000000, updatedAt: 1787000100 } } },
+    { type: 'event_msg', timestamp: '2026-08-17T10:00:03.000Z', payload: { type: 'thread_goal_updated', threadId: 'sess-goal', goal: { threadId: 'sess-goal', objective: '把插件适配做完', status: 'paused', createdAt: 1787000000, updatedAt: 1787000200 } } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  await importCodex(ctx, persistence, {}, root)
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(goals.length, 2, 'create + pause')
+  assert.equal(goals[0].data.operation, 'create')
+  assert.equal(goals[0].data.goal.objective, '把插件适配做完')
+  assert.equal(goals[0].data.goal.id, `goal-${id}`)
+  assert.equal(goals[1].data.operation, 'pause')
+  assert.equal(goals[1].data.goal.phase, 'paused')
+})
+
+test('import-codex: the goal chain is accepted by the real DSH goal fold', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goalfold-'))
+  const id = makeSession(root, 'goalfold')
+  const goalLine = (status, updatedAt) => JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:04.000Z',
+    payload: { type: 'thread_goal_updated', threadId: 'sess-goalfold', goal: { threadId: 'sess-goalfold', objective: '让目标真的生效', status, createdAt: 1787000000, updatedAt } },
+  })
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-goalfold.jsonl')
+  appendFileSync(file, goalLine('active', 1787000100) + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  // First import: create only.
+  await importCodex(ctx, persistence, {}, root)
+  // Codex pauses, then blocks, then resumes: every hop must stay admissible.
+  for (const [status, at] of [['paused', 1787000200], ['blocked', 1787000300], ['active', 1787000400]]) {
+    appendFileSync(file, goalLine(status, at) + '\n')
+    await importCodex(ctx, persistence, {}, root)
+    const fold = foldGoal(store.get(id) ?? [])
+    assert.equal(fold.goal?.id, `goal-${id}`)
+    assert.equal(fold.goal?.phase, status)
+  }
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.deepEqual(goals.map((e) => e.data.operation), ['create', 'pause', 'resume', 'block', 'resume'])
+  assert.deepEqual(goals.map((e) => e.data.goal.revision), [1, 2, 3, 4, 5])
+})
+
+test('import-codex: a re-imported new turn does not duplicate the goal create', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goaldup-'))
+  const id = makeSession(root, 'goaldup')
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-goaldup.jsonl')
+  appendFileSync(file, JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:04.000Z',
+    payload: { type: 'thread_goal_updated', threadId: 'sess-goaldup', goal: { threadId: 'sess-goaldup', objective: '不要重复创建', status: 'active', createdAt: 1787000000, updatedAt: 1787000100 } },
+  }) + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+  await importCodex(ctx, persistence, {}, root)
+
+  // Codex continues the thread: the diffed suffix also spans the trailing goal
+  // events of the rebuilt log, so the goal create must be filtered out of it —
+  // a goal id may only be created once per session.
+  appendMessages(root, 'goaldup', [
+    { role: 'user', text: 'user-goaldup-2' },
+    { role: 'assistant', text: 'assistant-goaldup-2' },
+  ])
+
+  await importCodex(ctx, persistence, {}, root)
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(goals.length, 1, 'no duplicate create on re-import')
+  const fold = foldGoal(store.get(id) ?? [])
+  assert.equal(fold.goal?.phase, 'active')
+  assert.equal(fold.goal?.revision, 1)
+})
+
+test('import-codex: re-import follows a Codex goal that changed to paused', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goal2-'))
+  const id = makeSession(root, 'goal2')
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-goal2.jsonl')
+  const goalLine = (status, updatedAt) => JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:04.000Z',
+    payload: { type: 'thread_goal_updated', threadId: 'sess-goal2', goal: { threadId: 'sess-goal2', objective: '继续推进', status, createdAt: 1787000000, updatedAt } },
+  })
+  appendFileSync(file, goalLine('active', 1787000100) + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  await importCodex(ctx, persistence, {}, root)
+  const first = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(first.length, 1)
+  assert.equal(first[0].data.goal.phase, 'active')
+
+  // Codex pauses the goal; the next import must append only the transition.
+  appendFileSync(file, goalLine('paused', 1787000200) + '\n')
+  await importCodex(ctx, persistence, {}, root)
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(goals.length, 2)
+  assert.equal(goals[1].data.operation, 'pause')
+  assert.equal(goals[1].data.goal.phase, 'paused')
+  assert.equal(goals[1].data.goal.revision, 2)
+})
+
+test('import-codex: a chat open in the GUI (active write handle) is skipped, not fatal', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-busy-'))
+  const busyId = makeSession(root, 'busy')
+  const freeId = makeSession(root, 'free')
+  const { persistence, ctx, store } = stubPersistence()
+  // Both already imported; both gained a Codex turn that must be appended.
+  store.set(busyId, [])
+  store.set(freeId, [])
+  appendMessages(root, 'busy', [{ role: 'user', text: 'user-busy-2' }])
+  appendMessages(root, 'free', [{ role: 'user', text: 'user-free-2' }])
+
+  // DSH keeps ONE write handle per Session id; an open chat owns it.
+  const realAppend = persistence.append.bind(persistence)
+  persistence.append = async (id, events) => {
+    if (id === busyId) {
+      const error = new Error(`session "${id}" is already owned by an active write handle`)
+      error.name = 'SessionAlreadyOwnedError'
+      throw error
+    }
+    return realAppend(id, events)
+  }
+
+  const lines = await importCodex(ctx, persistence, {}, root)
+  const report = lines.join('\n')
+  assert.match(report, /busy 1/, 'the busy session is counted, the batch is not aborted')
+  assert.match(report, /\[busy\] codex-sess-busy: 该对话正在 DSH 中打开/)
+  assert.match(report, /updated 1/, 'the other session still updated')
+  assert.equal(store.get(busyId).length, 0, 'busy session untouched')
+  assert.ok(store.get(freeId).length > 0, 'free session appended')
+})
+
+test('import-codex: other append failures still fail loud', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-flush2-'))
+  const id = makeSession(root, 'boom')
+  const { persistence, ctx, store } = stubPersistence()
+  store.set(id, [])
+  appendMessages(root, 'boom', [{ role: 'user', text: 'user-boom-2' }])
+  persistence.append = async () => { throw new Error('disk full') }
+  await assert.rejects(() => importCodex(ctx, persistence, {}, root), /disk full/)
 })
 
 test('catalog: nests sub-agents under parent and marks imported', async () => {
@@ -149,7 +308,7 @@ test('import-codex: dryRun lists candidates but writes nothing', async () => {
   const report = lines.join('\n')
   assert.match(report, /\[codex\] dry-run: no sessions will be written/)
   assert.ok(report.includes(`[would-import] ${main}`), 'dry-run lists the main session')
-  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, subagent-skipped 1/)
+  assert.match(report, /would-import 1, updated 0, skipped 0, empty 0, busy 0, migration-failed 0, subagent-skipped 1/)
   assert.equal(store.size, 0, 'dry-run must not create sessions')
 })
 
@@ -209,6 +368,83 @@ test('import-codex: paginated rollout segments of one thread merge into a single
   const users = store.get(main).filter((e) => e.type === 'user/message').map((e) => e.data.content.map((b) => b.text).join(''))
   assert.ok(users.some((t) => t.includes('user-main-1')), 'base segment messages imported')
   assert.ok(users.some((t) => t.includes('user-main-seg')), 'continuation segment messages imported in the same session')
+})
+
+test('catalog: paginated segments of one thread appear as ONE row', async () => {
+  // The picker used to build a row per FILE, so a thread Codex continued into
+  // `rollout-<ts>-<uuid>_<fork>.jsonl` showed up two or three times with the
+  // same title. Segments share `session_meta.payload.id`, so they must fold.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-catalog-seg-'))
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  mkdirSync(dir, { recursive: true })
+  const segment = (name, at, text) => [
+    { type: 'session_meta', payload: { id: 'sess-seg', cwd: '/tmp/proj', timestamp: at, source: 'cli' } },
+    { type: 'response_item', timestamp: at, payload: { type: 'message', id: `m-${name}`, role: 'user', content: [{ type: 'input_text', text }] } },
+    { type: 'response_item', timestamp: at, payload: { type: 'message', id: `a-${name}`, role: 'assistant', content: [{ type: 'output_text', text: `a-${name}` }] } },
+  ]
+  writeFileSync(join(dir, 'rollout-seg.jsonl'), segment('base', '2026-08-17T10:00:00.000Z', 'base-ask').map((e) => JSON.stringify(e)).join('\n') + '\n')
+  writeFileSync(join(dir, 'rollout-seg_01a2.jsonl'), segment('fork', '2026-08-18T10:00:00.000Z', 'fork-ask').map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx } = stubPersistence()
+
+  const catalog = await listImportCatalog(persistence, {}, root)
+  const rows = catalog.projects.flatMap((p) => p.sessions)
+  assert.equal(rows.length, 1, 'one thread → one row')
+  assert.equal(rows[0].id, 'codex-sess-seg')
+  assert.ok(rows[0].lastTime >= Date.parse('2026-08-18T10:00:00.000Z'), 'span covers the newest segment')
+})
+
+test('catalog: a Codex side chat (forked thread) is neither listed nor imported', async () => {
+  // Codex Desktop forks a conversation into its own thread for a side chat; it
+  // repeats the parent's name and history, so syncing it duplicates the chat.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-side-'))
+  const main = makeSession(root, 'parent')
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  writeFileSync(join(dir, 'rollout-side.jsonl'), [
+    { type: 'session_meta', payload: { id: 'sess-side', cwd: '/tmp/proj', timestamp: '2026-08-17T11:00:00.000Z', forked_from_id: 'sess-parent' } },
+    rawEvent({ type: 'message', id: 'm-side', role: 'user', content: [{ type: 'input_text', text: 'user-side-1' }] }),
+    rawEvent({ type: 'message', id: 'a-side', role: 'assistant', content: [{ type: 'output_text', text: 'assistant-side-1' }] }),
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  const catalog = await listImportCatalog(persistence, {}, root)
+  const ids = catalog.projects.flatMap((p) => p.sessions).map((s) => s.id)
+  assert.ok(ids.includes(main), 'the real chat is listed')
+  assert.ok(!ids.includes('codex-sess-side'), 'the side chat is not listed')
+  assert.equal(catalog.skippedSideChat, 1)
+
+  const lines = await importCodex(ctx, persistence, {}, root)
+  assert.ok(!store.has('codex-sess-side'), 'the side chat is not imported')
+  assert.match(lines.join('\n'), /side-chat-skipped 1/)
+  assert.match(lines.join('\n'), /侧边聊天/)
+})
+
+test('catalog: 管理已同步 still lists side chats and orphaned imports so they stay deletable', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-manage-'))
+  makeSession(root, 'live')
+  const dir = join(root, 'sessions', '2026', '08', '17')
+  // A side chat (forked) plus an import whose Codex thread is gone entirely.
+  writeFileSync(join(dir, 'rollout-side.jsonl'), [
+    { type: 'session_meta', payload: { id: 'sess-side', cwd: '/tmp/proj', timestamp: '2026-08-17T11:00:00.000Z', forked_from_id: 'sess-parent' } },
+    rawEvent({ type: 'message', id: 'm-side', role: 'user', content: [{ type: 'input_text', text: 'user-side-1' }] }),
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+  await importCodex(ctx, persistence, {}, root)
+
+  // Simulate the orphan: DSH holds a codex session Codex no longer has.
+  const orphanId = 'codex-gone-1111'
+  store.set(orphanId, [
+    { type: 'session/title', seq: 0, time: Date.now(), data: { title: '被 Codex 删除的会话' } },
+  ])
+
+  const manage = await listImportCatalog(persistence, { onlyImported: true }, root)
+  const ids = manage.projects.flatMap((p) => p.sessions).map((s) => s.id)
+  assert.ok(ids.includes(orphanId), 'orphaned import is listed for deletion')
+  const orphan = manage.projects.flatMap((p) => p.sessions).find((s) => s.id === orphanId)
+  assert.equal(orphan.title, '被 Codex 删除的会话', 'title comes from the DSH session log')
+
+  const importView = await listImportCatalog(persistence, {}, root)
+  const importIds = importView.projects.flatMap((p) => p.sessions).map((s) => s.id)
+  assert.ok(!importIds.includes('codex-sess-side'), 'the import view still hides side chats')
 })
 
 test('import-codex: writes the session in the installed current format, not v0 (issue #2)', async () => {
@@ -502,4 +738,60 @@ test('import-codex: a failed flush surfaces instead of reporting success', async
     /disk full/,
   )
   assert.deepEqual(ops, ['append', 'flush', 'close'], 'cleanup attempted before surfacing the error')
+})
+
+test('import-codex: a question answer survives migration and passes the current write gate', async () => {
+  // Regression: the v2→v3 stage rejects unknown `source.kind` values
+  // ("cannot safely transform unclassified message source"), which aborted the
+  // whole import once answers were converted to reply cards.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-reply-'))
+  const id = makeSession(root, 'reply')
+  const item = {
+    questionItemId: '["request_user_input_async","call_4326ec8a195049adb5882d6e601f5425",0]',
+    question: '是否允许专用 manage_channels 凭据？',
+    answer: '允许专用 manage_channels 凭据（推荐）',
+  }
+  appendMessages(root, 'reply', [
+    { role: 'user', text: '<send_user_message_question_reply>\n' + JSON.stringify([item]) + '\n</send_user_message_question_reply>\n' },
+    { role: 'assistant', text: 'assistant-reply-2' },
+  ])
+  const { persistence, ctx, store, metas } = stubPersistence()
+
+  await importCodex(ctx, persistence, {}, root)
+  const reply = (store.get(id) ?? []).find((e) => e.type === 'user/message' && e.data?.source?.kind === 'user-question-reply')
+  assert.ok(reply !== undefined, 'the answer is stored as a reply card, not plain text')
+  assert.equal(reply.data.source.callId, 'call_4326ec8a195049adb5882d6e601f5425')
+  assert.equal(reply.surfaceOp, 'append')
+  const payload = JSON.parse(reply.data.content[0].text)
+  assert.deepEqual(payload.answers[0].selected, [item.answer])
+
+  // The written log must still be writable/readable in the installed format.
+  const { sessionFormatCatalog } = await import('@deepseek-ai/dsh-session-format-catalog')
+  for (const event of store.get(id) ?? []) sessionFormatCatalog.encodeCurrentEvent(event)
+  const { restoreReleasedV4Artifact } = await import('@deepseek-ai/dsh-session-format-v3-to-v4')
+  const { KNOWN_SESSION_EVENT_TYPES } = await import('@deepseek-ai/dsh-session')
+  restoreReleasedV4Artifact({ header: metas.get(id), events: store.get(id) ?? [], inheritedEventCount: 0 }, KNOWN_SESSION_EVENT_TYPES)
+})
+
+test('import-codex: one session the migration cannot transform is skipped, the rest still import', async () => {
+  // The v2→v3 stage rejected `user-question-reply` and aborted the WHOLE batch;
+  // a single untransformable chat must now be reported and skipped instead.
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-migskip-'))
+  const good = makeSession(root, 'good')
+  const bad = makeSession(root, 'bad')
+  const { persistence, ctx, store } = stubPersistence()
+
+  const lines = await importCodex(ctx, persistence, {
+    migrateToCurrent(header, events) {
+      if (header.id === bad) throw new Error('cannot safely transform unclassified message source')
+      return migrateToCurrentReal(header, events)
+    },
+  }, root)
+
+  const report = lines.join('\n')
+  assert.match(report, /\[skipped-migration\] codex-sess-bad: cannot safely transform unclassified message source/)
+  assert.match(report, /migration-failed 1/)
+  assert.match(report, /imported 1/, 'the other session still imported')
+  assert.ok(store.has(good), 'the healthy session was written')
+  assert.ok(!store.has(bad), 'the untransformable one was not written')
 })

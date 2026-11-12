@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { dshDep } from './_env.mjs'
@@ -26,7 +27,7 @@ test('state: persisted settings override config defaults (DSH_HOME temp)', async
   const prevHome = process.env.DSH_HOME
   process.env.DSH_HOME = tempHome
   try {
-    const { effectiveSetting, writeState, readState } = await import(join(PROJECT, 'lib', 'state.js'))
+    const { effectiveSetting, writeState, readState } = await import(pathToFileURL(join(PROJECT, 'lib', 'state.js')).href)
     // untouched → config defaults win
     assert.equal(effectiveSetting('enableInstructions', true), true)
     assert.equal(effectiveSetting('enableInstructions', false), false)
@@ -97,9 +98,9 @@ command = "computer"
       t.skip('cordis not found in the dsh installation')
       return
     }
-    const { Context, Service } = await import(join(cordisRoot, 'lib', 'index.js'))
-    const plugin = (await import(join(PROJECT, 'lib', 'index.js'))).default
-    const { startMcpMirror, formatMcpStatus } = await import(join(PROJECT, 'lib', 'mcp.js'))
+    const { Context, Service } = await import(pathToFileURL(join(cordisRoot, 'lib', 'index.js')).href)
+    const plugin = (await import(pathToFileURL(join(PROJECT, 'lib', 'index.js')).href)).default
+    const { startMcpMirror, formatMcpStatus } = await import(pathToFileURL(join(PROJECT, 'lib', 'mcp.js')).href)
 
     class StubSystemPrompt extends Service { constructor(c) { super(c, 'systemPrompt', true) } section() { return () => {} } }
     class StubCommands extends Service {
@@ -155,7 +156,7 @@ command = "computer"
     assert.match(unknown.text, /未知设置/)
 
     // /import-codex: args parse from invocation.rawInput
-    const { parseInput } = await import(join(PROJECT, 'lib', 'index.js'))
+    const { parseInput } = await import(pathToFileURL(join(PROJECT, 'lib', 'index.js')).href)
     assert.deepEqual(parseInput(' --limit 5 --since 2026-01-01'), { limit: 5, since: 1767225600000 })
     // bare boolean flags (e.g. --include-subagents) must not swallow the next value token
     assert.deepEqual(parseInput(' --include-subagents'), { 'include-subagents': true })
