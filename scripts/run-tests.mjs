@@ -13,6 +13,7 @@ const suites = [
   'test/codex-index.test.mjs',
   'test/attach-workspaces.test.mjs',
   'test/import-service.test.mjs',
+  'test/delete-imported.test.mjs',
   'test/plugin-skill.test.mjs',
   'test/export-codex.test.mjs',
   'test/item-sync.test.mjs',

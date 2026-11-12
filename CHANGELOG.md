@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.10.0 — 2026-11-12
+
+- **New: 管理已同步 (manage synced chats)** — a picker that lists the chats this
+  plugin imported, grouped by Codex project exactly like the import view, with
+  checkboxes and a delete button (Sync settings → 管理已同步).
+  DSH itself has **no** delete-Session API — the workspace controller only
+  offers archive/unarchive/pin/unpin — so `archive` keeps the artifact and a
+  later re-import still sees the old Session. This panel removes it for real:
+  the session directory, its projection-cache entry, and the archive flag (the
+  SQLite index reconciles itself).
+  Safety: only `codex-*` ids are accepted (a chat created in DSH can never be
+  removed this way), a chat that is open in DSH is refused instead of deleted,
+  ids that are not in the store are reported as missing, and `dryRun` reports
+  without touching anything. The Codex original is never touched.
+- Host: `GET /dsh-codex-sync/catalog?only=imported` (catalog restricted to
+  already-imported threads), `POST /dsh-codex-sync/delete` → `lib/delete-imported.mjs`.
+- Tests: 6 new cases (removal + cache + archive flag, native-session refusal,
+  open-chat refusal, missing id, dryRun, path lookup). 88 total.
+
 ## 1.9.3 — 2026-11-12
 
 - **The replayed goal chain is now admissible for DSH's real goal fold.**
