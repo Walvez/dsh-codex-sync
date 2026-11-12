@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.10.11 — 2026-11-12
+
+- **A chat left untouched because it is open also counts as a partial outcome.**
+  `busy N` (the Host holds that Session's write handle) now triggers the warning
+  result page alongside `migration-failed N`, with its own title
+  「部分会话未更新」 / “Some chats were not updated” (migration failures keep
+  「部分会话未导入」). The panel lists every `[busy]` / `[skipped-migration]` line
+  plus the hints, so “close that chat and re-import” is visible instead of hiding
+  behind a green check.
+- Deliberate filters (subagent / side chat / oversized) stay silent: they are not
+  failures.
+
 ## 1.10.10 — 2026-11-12
 
 - **A partial import now says so.** When the batch skipped sessions the
