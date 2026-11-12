@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.3 — 2026-11-12
+
+- **The replayed goal chain is now admissible for DSH's real goal fold.**
+  `@deepseek-ai/dsh-goal` validates strictly: `create` must be revision 1 / phase
+  active / zero rounds, every later change is exactly revision + 1 and preserves
+  `createdAt` + `roundsStarted`, `pause`/`block` only apply to an active goal,
+  `resume` is the only way back to active, and a goal id may be created only
+  once per session (`seenGoalIds`). The importer violated the last rule twice:
+  a re-import whose diffed suffix spanned the rebuilt log re-appended the goal
+  `create` (⇒ `goal create requires a fresh active revision-one goal with zero
+  rounds`, which left the goal projection broken), and a Codex goal that changed
+  back to active was written as a second `create` instead of `resume`.
+  Now: goal events never travel in the diffed suffix (`diffImportEvents` filters
+  them), re-imports read the stored goal back from the log and continue it
+  (`resume`/`pause`/`block`/`complete` with the right revision), and an
+  impossible move (anything out of `complete`) appends nothing.
+- Tests fold the produced log with the **real** `foldGoal` from
+  `@deepseek-ai/dsh-goal` — create → pause → blocked → resume stays admissible —
+  plus a regression test that a re-imported turn does not duplicate the create.
+
 ## 1.9.2 — 2026-11-12
 
 - **Imported chats no longer land in 创造模式 (the `cordis` agent preset).**

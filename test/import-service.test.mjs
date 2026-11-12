@@ -11,6 +11,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { importCodex, listImportCatalog } from '../lib/import-service.js'
+import { foldGoal } from '@deepseek-ai/dsh-goal'
 
 // Build a raw response_item event (NOT a string) so the file body below can be
 // JSON.stringify'd exactly once per line.
@@ -138,6 +139,61 @@ test('import-codex: an unfinished Codex goal becomes an active DSH goal', async 
   assert.equal(goals[0].data.goal.id, `goal-${id}`)
   assert.equal(goals[1].data.operation, 'pause')
   assert.equal(goals[1].data.goal.phase, 'paused')
+})
+
+test('import-codex: the goal chain is accepted by the real DSH goal fold', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goalfold-'))
+  const id = makeSession(root, 'goalfold')
+  const goalLine = (status, updatedAt) => JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:04.000Z',
+    payload: { type: 'thread_goal_updated', threadId: 'sess-goalfold', goal: { threadId: 'sess-goalfold', objective: '让目标真的生效', status, createdAt: 1787000000, updatedAt } },
+  })
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-goalfold.jsonl')
+  appendFileSync(file, goalLine('active', 1787000100) + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+
+  // First import: create only.
+  await importCodex(ctx, persistence, {}, root)
+  // Codex pauses, then blocks, then resumes: every hop must stay admissible.
+  for (const [status, at] of [['paused', 1787000200], ['blocked', 1787000300], ['active', 1787000400]]) {
+    appendFileSync(file, goalLine(status, at) + '\n')
+    await importCodex(ctx, persistence, {}, root)
+    const fold = foldGoal(store.get(id) ?? [])
+    assert.equal(fold.goal?.id, `goal-${id}`)
+    assert.equal(fold.goal?.phase, status)
+  }
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.deepEqual(goals.map((e) => e.data.operation), ['create', 'pause', 'resume', 'block', 'resume'])
+  assert.deepEqual(goals.map((e) => e.data.goal.revision), [1, 2, 3, 4, 5])
+})
+
+test('import-codex: a re-imported new turn does not duplicate the goal create', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cx-sync-import-goaldup-'))
+  const id = makeSession(root, 'goaldup')
+  const file = join(root, 'sessions', '2026', '08', '17', 'rollout-goaldup.jsonl')
+  appendFileSync(file, JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-08-17T10:00:04.000Z',
+    payload: { type: 'thread_goal_updated', threadId: 'sess-goaldup', goal: { threadId: 'sess-goaldup', objective: '不要重复创建', status: 'active', createdAt: 1787000000, updatedAt: 1787000100 } },
+  }) + '\n')
+  const { persistence, ctx, store } = stubPersistence()
+  await importCodex(ctx, persistence, {}, root)
+
+  // Codex continues the thread: the diffed suffix also spans the trailing goal
+  // events of the rebuilt log, so the goal create must be filtered out of it —
+  // a goal id may only be created once per session.
+  appendMessages(root, 'goaldup', [
+    { role: 'user', text: 'user-goaldup-2' },
+    { role: 'assistant', text: 'assistant-goaldup-2' },
+  ])
+
+  await importCodex(ctx, persistence, {}, root)
+  const goals = (store.get(id) ?? []).filter((e) => e.type === 'goal/change')
+  assert.equal(goals.length, 1, 'no duplicate create on re-import')
+  const fold = foldGoal(store.get(id) ?? [])
+  assert.equal(fold.goal?.phase, 'active')
+  assert.equal(fold.goal?.revision, 1)
 })
 
 test('import-codex: re-import follows a Codex goal that changed to paused', async () => {
